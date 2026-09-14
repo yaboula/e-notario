@@ -40,4 +40,3 @@ Beneficios, costes, riesgos, operación y deuda asumida.
 
 Pruebas, métricas y criterio que demostrarán que la decisión funciona.
 ```
-

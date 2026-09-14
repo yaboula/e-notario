@@ -1,0 +1,13 @@
+{
+  "name": "e-notario-v2",
+  "private": true,
+  "version": "0.6.1",
+  "packageManager": "pnpm@9.15.9",
+  "scripts": {
+    "dev": "pnpm --filter @notario/desktop dev",
+    "build": "pnpm --filter @notario/desktop build && pnpm --filter @notario/mobile build",
+    "typecheck": "pnpm -r typecheck",
+    "desktop": "pnpm --filter @notario/desktop tauri dev",
+    "desktop:build": "pnpm --filter @notario/desktop tauri build"
+  }
+}

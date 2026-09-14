@@ -1,0 +1,24 @@
+{
+  "$schema": "https://schema.tauri.app/config/2",
+  "productName": "e-notario",
+  "version": "0.6.1",
+  "identifier": "com.enotario.workspace.v2",
+  "build": {
+    "beforeDevCommand": "pnpm dev",
+    "devUrl": "http://localhost:1420",
+    "beforeBuildCommand": "pnpm build",
+    "frontendDist": "../dist"
+  },
+  "app": {
+    "windows": [{"title":"e-notario · Estación de captura","width":1440,"height":960,"minWidth":900,"minHeight":680,"center":true}],
+    "security": {"csp":"default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' blob: data:; font-src 'self'; connect-src ipc: http://ipc.localhost http://127.0.0.1:8787 ws://127.0.0.1:8787; frame-ancestors 'none'; base-uri 'self'"}
+  },
+  "bundle": {
+    "active": true,
+    "targets": ["nsis"],
+    "resources": {"binaries/cnie-capture/": "sidecar/"},
+    "shortDescription": "Captura, rectificación local y OCR europeo de documentos CNIE",
+    "category": "Business",
+    "windows": {"webviewInstallMode":{"type":"downloadBootstrapper"}}
+  }
+}

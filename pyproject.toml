@@ -1,0 +1,46 @@
+[build-system]
+requires = ["setuptools>=75", "wheel"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "cnie-rectifier"
+version = "0.6.1"
+description = "Local CNIE document detection and perspective rectification"
+readme = "README.md"
+requires-python = ">=3.11,<3.14"
+license = { text = "Proprietary" }
+dependencies = [
+  "numpy>=2.1,<3",
+  "opencv-python-headless>=4.10,<6",
+  "onnx>=1.17,<2",
+  "onnxruntime>=1.20,<2",
+  "Pillow>=11,<13",
+  "google-auth>=2.38,<3",
+  "requests>=2.32,<3",
+]
+
+[project.optional-dependencies]
+capture = ["fastapi>=0.115,<1", "uvicorn>=0.34,<1", "cryptography>=44,<50", "websockets>=14,<17"]
+dev = [
+  "pytest>=8,<10",
+  "pytest-cov>=6,<8",
+  "httpx>=0.28,<1",
+]
+
+[project.scripts]
+cnie-rectifier = "cnie_rectifier.cli:main"
+cnie-capture = "cnie_capture.__main__:main"
+cnie-ocr = "cnie_ocr.cli:main"
+
+[tool.setuptools]
+package-dir = {"" = "src"}
+
+[tool.setuptools.packages.find]
+where = ["src"]
+
+[tool.setuptools.package-data]
+cnie_rectifier = ["models/*.onnx"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+addopts = "-q"

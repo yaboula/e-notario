@@ -1,0 +1,28 @@
+{
+  "name": "@notario/mobile",
+  "private": true,
+  "version": "0.6.1",
+  "type": "module",
+  "scripts": {
+    "dev": "vite --host 127.0.0.1 --port 1421",
+    "build": "tsc -p tsconfig.json && vite build",
+    "typecheck": "tsc -p tsconfig.json",
+    "test": "vitest run"
+  },
+  "dependencies": {
+    "@notario/ui": "workspace:*",
+    "@notario/api-client": "workspace:*",
+    "react": "19.3.0",
+    "react-dom": "19.3.0"
+  },
+  "devDependencies": {
+    "@types/react": "^19.2.0",
+    "@types/react-dom": "^19.2.0",
+    "@testing-library/react": "^16.3.0",
+    "jsdom": "^27.0.0",
+    "vitest": "^3.2.4",
+    "@vitejs/plugin-react": "^6.0.0",
+    "typescript": "^5.9.3",
+    "vite": "8.3.0"
+  }
+}

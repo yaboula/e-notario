@@ -12,7 +12,7 @@ Procedimiento operativo:
 4. Abrir e-notario y comprobar la versión mostrada en el pie de la ventana.
 5. Realizar una captura de control.
 
-Se verificó una actualización real de `0.2.0` a `0.2.1` sin desinstalación previa y sin perder la configuración de oficina.
+Se verificaron actualizaciones reales sin desinstalación previa, incluida `0.6.0 → 0.6.1`; la comprobación conservó los tres archivos de configuración local con hashes idénticos y verificó el binario instalado frente al paquete construido.
 
 ## Canal futuro: actualizador remoto firmado
 

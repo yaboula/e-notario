@@ -8,7 +8,7 @@ La versión 0.6.1 interpreta localmente el `OcrResult` de anverso y reverso. No 
 2. Esperar a que termine el OCR europeo de ambas imágenes.
 3. Abrir **Datos estructurados**.
 4. Abrir el anverso o reverso en el visor cuando sea necesario.
-5. Confirmar o corregir los 14 campos, individualmente o por sección cuando no existan incidencias.
+5. Corregir los valores necesarios y confirmar cada categoría, o usar **Aceptar todo y aprobar** para revisar los 14 campos en una sola acción.
 6. Aprobar el documento desde Windows o desde el móvil que realizó la captura.
 7. Exportar el JSON UTF-8 exclusivamente mediante el diálogo explícito de Windows.
 

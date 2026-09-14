@@ -1,13 +1,13 @@
-# e-notario v2 · captura CNIE
+# e-notario v2 · captura CNIE · 0.6.1
 
 Base profesional para capturar una CNIE desde Windows o desde un móvil autorizado, validar localmente su geometría, producir una imagen color rectificada de `1600 × 1008`, reconocer su texto con Google Cloud Vision en la región UE y estructurar localmente los campos del modelo marroquí de 2020 bajo revisión humana.
 
 Esta fase contiene dos interfaces nuevas e independientes de v1:
 
-- **Estación Windows**: importación, emparejamiento QR, documentos anverso/reverso, comparación original/rectificada, OCR árabe RTL, extracción local, validación MRZ, revisión campo por campo y exportación JSON.
-- **Captura móvil PWA**: captura completa de la vista de cámara, guía de encuadre, revisión previa, progreso documental y reintento accionable; nunca recibe texto OCR.
+- **Estación Windows**: importación, emparejamiento QR, documentos anverso/reverso, comparación original/rectificada, OCR árabe RTL, extracción local, revisión por categorías y exportación JSON.
+- **Captura móvil PWA**: captura completa de la vista de cámara, guía de encuadre, progreso y revisión de los 14 valores del documento propio. No recibe OCR completo, credenciales, diagnósticos ni exportaciones.
 
-La detección, rectificación y extracción de campos permanecen en el PC. Solo una imagen rectificada que el operador haya aceptado se envía al endpoint europeo de Vision. Los datos estructurados no salen de la estación salvo exportación explícita del operador.
+La detección, rectificación y extracción de campos permanecen en el PC. Solo una imagen rectificada que el operador haya aceptado se envía al endpoint europeo de Vision. Los 14 valores revisables pueden compartirse únicamente con el móvil propietario dentro de la LAN; no se envían a Google ni a terceros y solo salen del entorno de oficina mediante una exportación explícita desde Windows.
 
 ## Stack
 
@@ -16,12 +16,12 @@ La detección, rectificación y extracción de campos permanecen en el PC. Solo 
 - FastAPI y WebSocket para comunicar UI, móvil y núcleo local.
 - OpenCV + DocQuadNet-256 ONNX Runtime CPU para la rectificación.
 - Google Vision REST + `google-auth`, con cuenta de servicio cifrada mediante Windows DPAPI.
-- Motor determinista propio para plantilla CNIE 2020, lectura geométrica y MRZ TD1.
+- Motor determinista propio para la plantilla CNIE 2020 y lectura geométrica de 14 campos.
 - HTTPS privado con CA de oficina para habilitar la cámara en móviles de la LAN.
 
 ## Desarrollo
 
-Requisitos: Windows x64, Python 3.11–3.13, Node.js 22+, pnpm 10 y Rust estable para compilar la aplicación Tauri.
+Requisitos: Windows x64, Python 3.11–3.13, Node.js 22+, pnpm 9.15.9 y Rust estable para compilar la aplicación Tauri.
 
 ```powershell
 py -3.13 -m venv .venv
@@ -80,6 +80,7 @@ Los instaladores se generan bajo `apps/desktop/src-tauri/target/release/bundle`.
 
 ```powershell
 .\.venv\Scripts\python.exe -m pytest
+pnpm -r --if-present test
 pnpm typecheck
 pnpm build
 ```
@@ -89,3 +90,7 @@ Las capturas, resultados OCR, campos y correcciones se mantienen solo en memoria
 ## Modelo
 
 Se incluye DocQuadNet-256 FP32 opset 17, fijado al commit upstream `5d08804af3a2fe6d25c09f85366a19ca4fac0a04`. El grafo publicado tenía un nodo `Cast` fuera de orden topológico; la copia incluida solo corrige ese orden y conserva salidas idénticas. La procedencia, hash y licencia están en `models/README.md` y `THIRD_PARTY_NOTICES.md`.
+
+## Documentación
+
+La referencia principal es [la documentación integral de e-notario 0.6.1](docs/DOCUMENTACION_V0.6.1.md). Incluye alcance, arquitectura, flujos, interfaces, estados, API, seguridad, privacidad, operación, pruebas, límites y hoja de ruta. El [índice documental](docs/README.md) enlaza las guías especializadas.

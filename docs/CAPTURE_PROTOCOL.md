@@ -21,4 +21,4 @@ Acciones asociadas a los códigos:
 - `QUADRILATERAL_OUT_OF_BOUNDS`, `INVALID_QUADRILATERAL_GEOMETRY`, `DEGENERATE_HOMOGRAPHY`, `MATERIAL_BLACK_BORDER`: asegurar que toda la tarjeta quede dentro del encuadre y repetir.
 - `MODEL_UNAVAILABLE`, `CLASSICAL_DETECTOR_ERROR`: incidencia técnica; no seguir con OCR y notificar al responsable.
 
-`CLASSICAL_DETECTOR_MISSED` y `MODEL_DETECTOR_MISSED` son advertencias de fallback, no rechazos. Deben contabilizarse en el benchmark para detectar cambios de dominio.
+`CLASSICAL_DETECTOR_MISSED`, `MODEL_DETECTOR_MISSED`, `DETECTOR_SOFT_DISAGREEMENT` y `STRONG_CLASSICAL_OVERRIDE` son advertencias de fallback, no rechazos. Deben contabilizarse en el benchmark para detectar cambios de dominio. El perfil 0.6.1 tolera variación moderada de luz y borde, pero conserva como controles duros la geometría, presencia completa, resolución, legibilidad y ausencia de bordes negros materiales.

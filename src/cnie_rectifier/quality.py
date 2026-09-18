@@ -67,6 +67,16 @@ def capture_quality(image_bgr: np.ndarray, quad: np.ndarray, config: object) -> 
     }
 
 
+def card_sharpness(rectified_bgr: np.ndarray) -> dict[str, object]:
+    """Measure the normalized card interior, excluding its rim and background."""
+    card = cv2.resize(rectified_bgr, (1000, 630), interpolation=cv2.INTER_AREA)
+    gray = cv2.cvtColor(card, cv2.COLOR_BGR2GRAY)[25:-25, 40:-40]
+    return {
+        "card_laplacian_variance": float(cv2.Laplacian(gray, cv2.CV_64F)[2:-2, 2:-2].var()),
+        "sharpness_analysis_dimensions": [1000, 630],
+    }
+
+
 def rejection_codes(metrics: dict[str, object], config: object) -> list[str]:
     codes: list[str] = []
     if not bool(metrics["quad_inside_image"]):
@@ -96,4 +106,7 @@ def rejection_codes(metrics: dict[str, object], config: object) -> list[str]:
         codes.append("IMAGE_TOO_DARK")
     if float(metrics["mean_luminance"]) > config.max_mean_luminance:
         codes.append("IMAGE_TOO_BRIGHT")
+    if config.min_card_laplacian_variance is not None and "card_laplacian_variance" in metrics and \
+            float(metrics["card_laplacian_variance"]) < config.min_card_laplacian_variance:
+        codes.append("CARD_TOO_BLURRY")
     return list(dict.fromkeys(codes))

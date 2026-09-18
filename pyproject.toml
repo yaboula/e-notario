@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "cnie-rectifier"
-version = "0.6.1"
+version = "0.8.0a3"
 description = "Local CNIE document detection and perspective rectification"
 readme = "README.md"
 requires-python = ">=3.11,<3.14"
@@ -17,6 +17,7 @@ dependencies = [
   "Pillow>=11,<13",
   "google-auth>=2.38,<3",
   "requests>=2.32,<3",
+  "lxml>=5.3,<7",
 ]
 
 [project.optional-dependencies]
@@ -25,6 +26,7 @@ dev = [
   "pytest>=8,<10",
   "pytest-cov>=6,<8",
   "httpx>=0.28,<1",
+  "python-docx>=1.1,<2",
 ]
 
 [project.scripts]
@@ -40,6 +42,7 @@ where = ["src"]
 
 [tool.setuptools.package-data]
 cnie_rectifier = ["models/*.onnx"]
+cnie_documents = ["assets/*.png", "assets/fonts/*.ttf", "assets/fonts/*.txt", "templates/*/*.docx", "templates/*/*.json", "templates/*/*.txt"]
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]

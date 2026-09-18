@@ -60,19 +60,19 @@ def wait_for(client, capture_id, status):
     raise AssertionError(f"OCR did not reach {status}")
 
 
-def test_acceptance_is_only_trigger_and_idempotent(tmp_path):
+def test_local_acceptance_queues_ocr_automatically_and_manual_reaccept_is_idempotent(tmp_path):
     ocr = Ocr()
     app = create_app(desktop_token=TOKEN, engine=Rectifier(), ocr_engine=ocr,
                      credential_store=Store(), usage_ledger=UsageLedger(tmp_path / "usage.json"))
     with TestClient(app) as client:
         uploaded = client.post("/api/captures?side=front", content=b"image", headers={**auth(),
             "Content-Type": "image/jpeg", "Idempotency-Key": str(uuid4())}).json()
-        assert ocr.calls == []
+        assert uploaded["review"] == "accepted"
+        wait_for(client, uploaded["id"], "success")
+        assert ocr.calls == [b"rectified-jpeg"]
         accepted = client.post(f"/api/captures/{uploaded['id']}/review", headers=auth(),
                                json={"decision": "accepted"})
         assert accepted.status_code == 200
-        wait_for(client, uploaded["id"], "success")
-        assert ocr.calls == [b"rectified-jpeg"]
         client.post(f"/api/captures/{uploaded['id']}/review", headers=auth(), json={"decision": "accepted"})
         time.sleep(.03)
         assert len(ocr.calls) == 1
@@ -123,3 +123,16 @@ def test_credential_endpoints_are_desktop_only_and_size_limited(tmp_path):
         assert client.put("/api/ocr/config/credential", content=b"x" * (64*1024+1),
                           headers={**auth(), "Content-Type":"application/json"}).status_code == 413
         assert client.get("/api/ocr/config", headers=auth("not-a-session")).status_code == 401
+
+
+def test_corrupt_usage_returns_storage_error_without_private_details(tmp_path):
+    path = tmp_path / "usage.json"
+    path.write_text("corrupt", encoding="utf-8")
+    app = create_app(desktop_token=TOKEN, engine=Rectifier(), ocr_engine=Ocr(),
+                     credential_store=Store(), usage_ledger=UsageLedger(path))
+    with TestClient(app) as client:
+        for endpoint in ["/api/ocr/config", "/api/ocr/usage"]:
+            response = client.get(endpoint, headers=auth())
+            assert response.status_code == 503
+            assert response.json() == {"detail": "OCR_USAGE_READ_FAILED"}
+            assert response.headers["Cache-Control"] == "no-store"

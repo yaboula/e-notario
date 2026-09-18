@@ -43,7 +43,9 @@ No instale esta CA en dispositivos personales. Elimine el perfil si un teléfono
 4. Escanéelo con el teléfono autorizado y confirme el emparejamiento.
 5. Conceda permiso de cámara solo al sitio HTTPS mostrado.
 
-El código QR es de un solo uso y expira. Cada móvil recibe una sesión separada. Las imágenes no se guardan en disco por defecto, caducan en 60 minutos y desaparecen al cerrar el motor.
+El código QR es de un solo uso y expira a los 120 segundos. Cada móvil recibe una sesión separada de cuatro horas; el puesto admite hasta ocho. Desde 0.8.0, imágenes, OCR y trabajo temporal se conservan cifrados bajo la cuenta Windows durante su retención de 24 horas y pueden recuperarse al reiniciar: cerrar la app no los destruye inmediatamente. Las identidades aprobadas caducan 24 horas desde aprobación.
+
+Antes de capturar, seleccione «CNIE 2020» o «CNIE antigua»; la elección queda fijada para ambas caras. La imagen válida se acepta automáticamente, pero los 14 datos deben revisarse y aprobarse expresamente. El móvil solo ve sus recursos y prepara documentos; Windows genera, guarda y abre Word. Use «Conservar identidad y liberar imágenes» después de aprobar o «Limpiar sesión» en Windows para eliminar los temporales. Esta limpieza no elimina perfiles, configuración ni DOCX guardados por el operador. Consulte la [documentación integral](DOCUMENTACION_FASE1.md).
 
 ## 5. Rotación y diagnóstico
 

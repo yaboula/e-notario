@@ -179,6 +179,13 @@ class CnieFieldExtractor:
     def extract(self, front: OcrResult, back: OcrResult, request_id: UUID | None = None) -> ExtractionResult:
         started = time.perf_counter()
         request_id = request_id or uuid4()
+        from .legacy import extract as extract_legacy, layout as legacy_layout
+        selected_layout = legacy_layout(front, back)
+        if selected_layout == "legacy":
+            return extract_legacy(front, back, request_id)
+        if selected_layout == "mixed":
+            return ExtractionResult(status=ExtractionStatus.UNSUPPORTED_LAYOUT, request_id=request_id,
+                error_code="EXTRACTION_MIXED_LAYOUT", metrics={"latency_ms": round((time.perf_counter()-started)*1000, 2)})
         front_text, back_text = front.full_text, back.full_text
         front_lower, back_lower = front_text.lower(), back_text.lower()
         front_anchor = sum(anchor in front_lower for anchor in ("royaume", "maroc", "المملكة", "البطاقة", "identite", "identité"))

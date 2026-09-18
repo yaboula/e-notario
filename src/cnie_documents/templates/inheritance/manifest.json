@@ -1,0 +1,264 @@
+{
+  "schema_version": "enotario.document-template/v2",
+  "id": "ma.inheritance",
+  "version": "1.5.1",
+  "slug": "herencia",
+  "title_es": "Acta de herencia",
+  "title_fr": "Acte d’hérédité",
+  "title_ar": "إراثة",
+  "description_es": "Piloto formal con solicitante, hasta doce herederos y hasta doce testigos.",
+  "description_fr": "Acte formel avec demandeur, jusqu’à douze héritiers et douze témoins.",
+  "language": "ar-MA",
+  "template_file": "template.docx",
+  "template_sha256": "c9f4b00e1e4ea696284bb6241767a8916e2542f51b0658138617c3ef1ea93e1a",
+  "legal_text_file": "legal.txt",
+  "legal_text_sha256": "2850ed2a3f0c248b3d257f04b4e40ee723242cb30a33dd898d1c12ce602210cf",
+  "roles": [
+    {
+      "key": "applicant",
+      "label_es": "Solicitante",
+      "label_fr": "Demandeur",
+      "label_ar": "طالب الشهادة",
+      "minimum": 0,
+      "maximum": 1
+    },
+    {
+      "key": "heir",
+      "label_es": "Heredero",
+      "label_fr": "Héritier",
+      "label_ar": "الوارث",
+      "minimum": 0,
+      "maximum": 12
+    },
+    {
+      "key": "witness",
+      "label_es": "Testigo",
+      "label_fr": "Témoin",
+      "label_ar": "الشاهد",
+      "minimum": 0,
+      "maximum": 12
+    }
+  ],
+  "fields": [
+    {
+      "key": "registry_number",
+      "tag": "manual.registry_number",
+      "label_fr": "N° d’enregistrement",
+      "label_ar": "رقم التسجيل",
+      "type": "text",
+      "required": true,
+      "direction": "ltr",
+      "maximum_characters": 64
+    },
+    {
+      "key": "page",
+      "tag": "manual.page",
+      "label_fr": "Page",
+      "label_ar": "الصحيفة",
+      "type": "number",
+      "required": true,
+      "direction": "ltr",
+      "maximum_characters": 24
+    },
+    {
+      "key": "book_number",
+      "tag": "manual.book_number",
+      "label_fr": "N° du registre",
+      "label_ar": "رقم كناش التركات",
+      "type": "text",
+      "required": true,
+      "direction": "ltr",
+      "maximum_characters": 64
+    },
+    {
+      "key": "registry_date",
+      "tag": "manual.registry_date",
+      "label_fr": "Date d’enregistrement",
+      "label_ar": "تاريخ التسجيل",
+      "type": "date",
+      "required": true,
+      "direction": "ltr",
+      "maximum_characters": 10
+    },
+    {
+      "key": "notary_1",
+      "tag": "manual.notary_1",
+      "label_fr": "Premier adoul",
+      "label_ar": "العدل الأول",
+      "type": "professional_profile",
+      "required": true,
+      "direction": "rtl",
+      "maximum_characters": 160
+    },
+    {
+      "key": "notary_2",
+      "tag": "manual.notary_2",
+      "label_fr": "Deuxième adoul",
+      "label_ar": "العدل الثاني",
+      "type": "professional_profile",
+      "required": true,
+      "direction": "rtl",
+      "maximum_characters": 160
+    },
+    {
+      "key": "notary_3",
+      "tag": "manual.notary_3",
+      "label_fr": "Responsable ou juge",
+      "label_ar": "المسؤول أو القاضي",
+      "type": "professional_profile",
+      "required": true,
+      "direction": "rtl",
+      "maximum_characters": 160
+    },
+    {
+      "key": "deceased",
+      "tag": "manual.deceased",
+      "label_fr": "Défunt",
+      "label_ar": "الهالك",
+      "type": "arabic_text",
+      "required": true,
+      "direction": "rtl",
+      "maximum_characters": 512
+    },
+    {
+      "key": "death_date",
+      "tag": "manual.death_date",
+      "label_fr": "Date du décès",
+      "label_ar": "تاريخ الوفاة",
+      "type": "date",
+      "required": true,
+      "direction": "ltr",
+      "maximum_characters": 10
+    },
+    {
+      "key": "death_record",
+      "tag": "manual.death_record",
+      "label_fr": "N° de l’acte de décès",
+      "label_ar": "رقم رسم الوفاة",
+      "type": "text",
+      "required": true,
+      "direction": "ltr",
+      "maximum_characters": 64
+    },
+    {
+      "key": "death_record_date",
+      "tag": "manual.death_record_date",
+      "label_fr": "Date de l’acte de décès",
+      "label_ar": "تاريخ رسم الوفاة",
+      "type": "date",
+      "required": true,
+      "direction": "ltr",
+      "maximum_characters": 10
+    },
+    {
+      "key": "heir_relation",
+      "tag_pattern": "manual.heir_relation.{index}",
+      "indices": [
+        1,
+        12
+      ],
+      "label_fr": "Lien successoral",
+      "label_ar": "صلة الإرث",
+      "type": "arabic_text",
+      "required": false,
+      "direction": "rtl",
+      "maximum_characters": 160,
+      "role": "heir"
+    },
+    {
+      "key": "estate_basis",
+      "tag": "manual.estate_basis",
+      "label_fr": "Fondement de la succession",
+      "label_ar": "مستند الإراثة",
+      "type": "arabic_text",
+      "required": true,
+      "direction": "rtl",
+      "maximum_characters": 1024
+    }
+  ],
+  "bindings": [
+    {
+      "tag": "enotario.applicant.1.person_ar",
+      "role": "applicant",
+      "index": 1,
+      "sources": [
+        "given_names_ar",
+        "surname_ar",
+        "filiation_ar",
+        "birth_date",
+        "birth_place_ar",
+        "national_id",
+        "expiry_date",
+        "address_ar",
+        "sex"
+      ],
+      "format": "person_ar",
+      "suffix": "،",
+      "maximum_characters": 1024
+    },
+    {
+      "tag": "enotario.heir.1.person_ar",
+      "role": "heir",
+      "index": 1,
+      "sources": [
+        "given_names_ar",
+        "surname_ar",
+        "filiation_ar",
+        "birth_date",
+        "birth_place_ar",
+        "national_id",
+        "expiry_date",
+        "address_ar",
+        "sex"
+      ],
+      "format": "person_ar",
+      "maximum_characters": 1024
+    }
+  ],
+  "binding_patterns": [
+    {
+      "tag_pattern": "enotario.heir.{index}.person_ar",
+      "role": "heir",
+      "indices": [
+        2,
+        12
+      ],
+      "sources": [
+        "given_names_ar",
+        "surname_ar",
+        "filiation_ar",
+        "birth_date",
+        "birth_place_ar",
+        "national_id",
+        "expiry_date",
+        "address_ar",
+        "sex"
+      ],
+      "format": "person_ar",
+      "prefix": "؛ ",
+      "maximum_characters": 1024
+    },
+    {
+      "tag_pattern": "enotario.witness.{index}.person_ar",
+      "role": "witness",
+      "indices": [
+        1,
+        12
+      ],
+      "sources": [
+        "given_names_ar",
+        "surname_ar",
+        "filiation_ar",
+        "birth_date",
+        "birth_place_ar",
+        "national_id",
+        "expiry_date",
+        "address_ar",
+        "sex"
+      ],
+      "format": "person_ar",
+      "suffix": ".",
+      "maximum_characters": 1024
+    }
+  ]
+}

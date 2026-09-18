@@ -9,7 +9,7 @@ from PIL import Image
 
 from cnie_ocr.domain import OcrStatus
 from cnie_ocr.google_vision import GoogleVisionOcrEngine, normalize_response
-from cnie_ocr.usage import UsageLedger, UsageLimitReached
+from cnie_ocr.usage import UsageLedger, UsageLimitReached, UsageStorageError
 
 
 class Response:
@@ -128,3 +128,47 @@ def test_usage_is_persistent_and_enforced(tmp_path):
         UsageLedger(path, daily_limit=1, monthly_limit=2).reserve(datetime(2026, 9, 14, tzinfo=timezone.utc))
     content = json.loads(path.read_text())
     assert content == {"2026-09-14": 1}
+
+
+@pytest.mark.parametrize("payload", ['broken json', '[]', '{"2026-09-14":-1}',
+                                     '{"2026-09-14":"1"}', '{"bad-date":1}'])
+def test_invalid_usage_is_preserved_and_blocks_provider(tmp_path, canonical_jpeg, payload):
+    path = tmp_path / "usage.json"
+    path.write_text(payload, encoding="utf-8")
+    with pytest.raises(UsageStorageError, match="OCR_USAGE_READ_FAILED"):
+        UsageLedger(path).summary()
+    session = Session()
+    result = engine(tmp_path, session).recognize(canonical_jpeg)
+    assert result.error_code == "OCR_USAGE_READ_FAILED"
+    assert session.calls == []
+    assert path.read_text(encoding="utf-8") == payload
+
+
+def test_denied_usage_read_does_not_reset_counter(tmp_path, monkeypatch):
+    from pathlib import Path
+    def denied(*_args, **_kwargs):
+        raise PermissionError("private path")
+    monkeypatch.setattr(Path, "read_text", denied)
+    with pytest.raises(UsageStorageError, match="^OCR_USAGE_READ_FAILED$"):
+        UsageLedger(tmp_path / "usage.json").reserve()
+
+
+def test_failed_usage_commit_preserves_counter_and_blocks_provider(tmp_path, canonical_jpeg, monkeypatch):
+    path = tmp_path / "usage.json"
+    original = '{"2026-09-14":5}'
+    path.write_text(original, encoding="utf-8")
+    def denied(*_args, **_kwargs):
+        raise OSError("private path")
+    monkeypatch.setattr("cnie_ocr.usage.os.replace", denied)
+    session = Session()
+    result = engine(tmp_path, session).recognize(canonical_jpeg)
+    assert result.error_code == "OCR_USAGE_WRITE_FAILED"
+    assert session.calls == []
+    assert path.read_text(encoding="utf-8") == original
+    assert list(tmp_path.glob("*.tmp")) == []
+
+
+def test_missing_usage_starts_empty_without_writing_on_read(tmp_path):
+    path = tmp_path / "usage.json"
+    assert UsageLedger(path).summary().used_today == 0
+    assert not path.exists()

@@ -4,6 +4,9 @@ import {ScanLine, Check, RotateCcw, Clock3, AlertCircle} from 'lucide-react';
 import '@fontsource-variable/inter';
 import '@fontsource-variable/noto-sans-arabic';
 import './styles.css';
+export {RoleIdentityPicker} from './RoleIdentityPicker';
+export {RepeatableLegalField} from './RepeatableLegalField';
+export {ProfessionalProfileField} from './ProfessionalProfileField';
 
 export {Button, IconButton, Dialog, DialogTitle, DialogContent, DialogActions, Alert,
   Snackbar, Tooltip, Tabs, Tab, LinearProgress, CircularProgress, Chip} from '@mui/material';
@@ -52,3 +55,12 @@ export function ProtectedImage({load, alt, className, onLoaded}: {load: (signal:
   return url ? <img className={className} src={url} alt={alt} onLoad={onLoaded} onError={() => setFailed(true)}/> : <div className="image-loading"><CircularProgress size={22}/></div>;
 }
 export function CardIllustration() {return <div className="document-illustration" aria-hidden="true"><div className="illustration-card"><div className="illustration-top"><span/><i/></div><div className="illustration-content"><div className="illustration-photo"/><div className="illustration-lines"><i/><i/><i/><i/></div></div><div className="illustration-bottom"/></div><span className="corner c1"/><span className="corner c2"/><span className="corner c3"/><span className="corner c4"/></div>}
+export function DocumentModeOptions({selected=false,selectedMode,onPartial,onComplete,compact=false}:{selected?:boolean;selectedMode?:'partial'|'complete'|null;onPartial:()=>void;onComplete?:()=>void;compact?:boolean}) {
+  const partialSelected=selectedMode?selectedMode==='partial':selected;
+  const completeSelected=selectedMode==='complete';
+  return <div className={`document-mode-options ${compact?'compact':''}`}>
+    <button type="button" className={`document-mode-option ${partialSelected?'selected':''}`} aria-pressed={partialSelected} onClick={onPartial}><strong>Relleno parcial</strong><span>Solo datos aprobados de CNIE. Los demás campos siguen editables en Word.</span><small>{partialSelected?'Seleccionado':'Disponible →'}</small></button>
+    <button type="button" className={`document-mode-option ${completeSelected?'selected':onComplete?'':'disabled'}`} disabled={!onComplete} aria-disabled={!onComplete} aria-pressed={completeSelected} onClick={onComplete}><strong>Relleno completo</strong><span>Completa los datos jurídicos en e-notario antes de generar el Word.</span><small>{completeSelected?'Seleccionado':onComplete?'Disponible →':'No disponible'}</small></button>
+  </div>;
+}
+export {useCaseCollaboration} from './useCaseCollaboration';

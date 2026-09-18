@@ -31,6 +31,10 @@ def upload(client, payload=b"invalid-png", token=TOKEN, key=None):
 
 
 def test_workspace_and_images_require_authentication(client):
+    assert client.get("/api/health").json() == {
+        "status": "ok", "version": "0.8.0-alpha.3", "api_version": 2,
+        "background": {"ocr_worker": "running", "maintenance": "running", "storage_error": None},
+    }
     assert client.get("/api/workspace").status_code == 401
     assert client.post("/api/pairing").status_code == 401
     assert client.get(f"/api/captures/{uuid4()}/original").status_code == 401
@@ -51,6 +55,18 @@ def test_pairing_expiration(client):
     code = client.post("/api/pairing", headers=auth()).json()["url"].split("#pair=")[1]
     client.app.state.capture.pair_deadline = 0
     assert client.post("/api/pair", json={"code": code}).status_code == 401
+
+
+def test_pairing_records_temporary_operator_and_device_label(client):
+    challenge = client.post("/api/pairing", headers=auth()).json()
+    code = challenge["url"].split("#pair=")[1]
+    response = client.post("/api/pair", json={
+        "code": code, "operator_name": "  Sara  ", "device_name": " Téléphone accueil ",
+    })
+    assert response.status_code == 200
+    result = response.json()
+    assert result["actor_label"] == "Sara · Téléphone accueil"
+    assert client.app.state.capture.session_labels[result["token"]] == result["actor_label"]
 
 
 def test_device_isolation_and_revocation(client):
@@ -76,6 +92,8 @@ def test_retries_are_idempotent_and_conflicting_retries_rejected(client):
 def test_rejected_image_cannot_be_accepted(client):
     capture = upload(client).json()
     assert capture["result"]["status"] == "invalid_image"
+    assert capture["review"] == "retake"
+    assert capture["ocr_summary"]["status"] == "not_started"
     assert client.post(f"/api/captures/{capture['id']}/review", headers=auth(),json={"decision":"accepted"}).status_code == 409
     assert client.get(f"/api/captures/{capture['id']}/rectified", headers=auth()).status_code == 404
     assert client.post(f"/api/captures/{capture['id']}/review", headers=auth(),json={"decision":"retake"}).json()["review"] == "retake"
@@ -120,6 +138,8 @@ def test_real_engine_upload_review_and_export(client, synthetic_capture, monkeyp
     assert response.status_code == 200
     capture = response.json()
     assert capture["result"]["status"] == "success", capture
+    assert capture["review"] == "accepted"
+    assert capture["ocr_summary"]["status"] == "queued"
     assert "rectified_image" not in capture["result"]
     assert "error" not in capture["result"]["docquadnet"]
     export = client.get(f"/api/captures/{capture['id']}/rectified", headers=auth())

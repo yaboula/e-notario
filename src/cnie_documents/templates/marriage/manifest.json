@@ -1,0 +1,38 @@
+{
+  "schema_version": "enotario.document-template/v2",
+  "id": "ma.marriage",
+  "version": "1.7.0",
+  "slug": "matrimonio",
+  "title_es": "Acta de matrimonio",
+  "title_fr": "Acte de mariage",
+  "title_ar": "زواج",
+  "description_es": "Piloto formal para asignar esposo, esposa y padre de la esposa con identidad CNIE aprobada.",
+  "description_fr": "Acte formel avec époux, épouse et père de l’épouse issus d’identités CNIE approuvées.",
+  "language": "ar-MA",
+  "template_file": "template.docx",
+  "template_sha256": "81841c04afd3b6b5a5bce8c0270801b8e2bfe80e0c6e36ee8241460cb1549d30",
+  "legal_text_file": "legal.txt",
+  "legal_text_sha256": "8d161e05f96961d5365fe5b94c309e64bfd1e8306a313a5ba4f3079574ac7b1e",
+  "roles": [
+    {"key": "husband", "label_es": "Esposo", "label_fr": "Époux", "label_ar": "الزوج", "minimum": 0, "maximum": 1},
+    {"key": "wife", "label_es": "Esposa", "label_fr": "Épouse", "label_ar": "الزوجة", "minimum": 0, "maximum": 1},
+    {"key": "wife_father", "label_es": "Padre de la esposa", "label_fr": "Père de l’épouse", "label_ar": "والد الزوجة", "minimum": 0, "maximum": 1}
+  ],
+  "fields": [
+    {"key": "registry_number", "tag": "manual.registry_number", "label_fr": "N° d’enregistrement", "label_ar": "رقم التسجيل", "type": "text", "required": true, "direction": "ltr", "maximum_characters": 64},
+    {"key": "page", "tag": "manual.page", "label_fr": "Page", "label_ar": "الصحيفة", "type": "number", "required": true, "direction": "ltr", "maximum_characters": 24},
+    {"key": "book_number", "tag": "manual.book_number", "label_fr": "N° du registre", "label_ar": "رقم كناش الزواج", "type": "text", "required": true, "direction": "ltr", "maximum_characters": 64},
+    {"key": "registry_date", "tag": "manual.registry_date", "label_fr": "Date d’enregistrement", "label_ar": "تاريخ التسجيل", "type": "date", "required": true, "direction": "ltr", "maximum_characters": 10},
+    {"key": "notary_1", "tag": "manual.notary_1", "label_fr": "Premier adoul", "label_ar": "العدل الأول", "type": "professional_profile", "required": true, "direction": "rtl", "maximum_characters": 160},
+    {"key": "notary_2", "tag": "manual.notary_2", "label_fr": "Deuxième adoul", "label_ar": "العدل الثاني", "type": "professional_profile", "required": true, "direction": "rtl", "maximum_characters": 160},
+    {"key": "notary_3", "tag": "manual.notary_3", "label_fr": "Responsable ou juge", "label_ar": "المسؤول أو القاضي", "type": "professional_profile", "required": true, "direction": "rtl", "maximum_characters": 160},
+    {"key": "case_number", "tag": "manual.case_number", "label_fr": "N° du dossier", "label_ar": "رقم الملف", "type": "text", "required": true, "direction": "ltr", "maximum_characters": 64},
+    {"key": "case_date", "tag": "manual.case_date", "label_fr": "Date du dossier", "label_ar": "تاريخ الملف", "type": "date", "required": true, "direction": "ltr", "maximum_characters": 10},
+    {"key": "dowry", "tag": "manual.dowry", "label_fr": "Dot", "label_ar": "الصداق", "type": "amount", "required": true, "direction": "rtl", "maximum_characters": 256}
+  ],
+  "bindings": [
+    {"tag": "enotario.husband.1.person_ar", "role": "husband", "index": 1, "sources": ["given_names_ar", "surname_ar", "filiation_ar", "birth_date", "birth_place_ar", "national_id", "expiry_date", "address_ar", "sex"], "format": "person_ar_male_bare", "maximum_characters": 1024},
+    {"tag": "enotario.wife.1.person_ar", "role": "wife", "index": 1, "sources": ["given_names_ar", "surname_ar", "filiation_ar", "birth_date", "birth_place_ar", "national_id", "expiry_date", "address_ar", "sex"], "format": "person_ar_female_bare", "maximum_characters": 1024},
+    {"tag": "enotario.wife_father.1.person_ar", "role": "wife_father", "index": 1, "sources": ["given_names_ar", "surname_ar", "filiation_ar", "birth_date", "birth_place_ar", "national_id", "expiry_date", "address_ar", "sex"], "format": "person_ar_male_bare", "maximum_characters": 1024}
+  ]
+}

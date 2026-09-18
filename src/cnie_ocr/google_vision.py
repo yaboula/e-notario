@@ -26,7 +26,7 @@ from .domain import (
     arabic_character,
     arabic_segments,
 )
-from .usage import UsageLedger, UsageLimitReached
+from .usage import UsageLedger, UsageLimitReached, UsageStorageError
 
 VISION_ORIGIN = "https://eu-vision.googleapis.com"
 VISION_SCOPE = "https://www.googleapis.com/auth/cloud-platform"
@@ -244,6 +244,8 @@ class GoogleVisionOcrEngine:
             self._usage.reserve()
         except UsageLimitReached:
             return _failure(identifier, "OCR_LOCAL_LIMIT_REACHED", False)
+        except UsageStorageError as error:
+            return _failure(identifier, str(error), True)
 
         context: dict[str, Any] = {}
         if language_hints:

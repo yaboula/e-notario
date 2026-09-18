@@ -3,6 +3,7 @@ from __future__ import annotations
 import json
 import os
 import threading
+import tempfile
 from dataclasses import dataclass
 from datetime import datetime, timezone
 from pathlib import Path
@@ -10,6 +11,10 @@ from pathlib import Path
 
 class UsageLimitReached(RuntimeError):
     pass
+
+
+class UsageStorageError(RuntimeError):
+    """The local cost ledger cannot be trusted or durably updated."""
 
 
 @dataclass(frozen=True)
@@ -38,15 +43,41 @@ class UsageLedger:
     def _read(self) -> dict[str, int]:
         try:
             value = json.loads(self.path.read_text(encoding="utf-8"))
-            return {str(key): max(0, int(count)) for key, count in value.items()}
-        except (OSError, ValueError, TypeError):
+        except FileNotFoundError:
             return {}
+        except (OSError, ValueError):
+            raise UsageStorageError("OCR_USAGE_READ_FAILED") from None
+        if not isinstance(value, dict):
+            raise UsageStorageError("OCR_USAGE_READ_FAILED")
+        for key, count in value.items():
+            try:
+                valid_day = datetime.strptime(key, "%Y-%m-%d").strftime("%Y-%m-%d") == key
+            except (ValueError, TypeError):
+                valid_day = False
+            if not valid_day or type(count) is not int or count < 0:
+                raise UsageStorageError("OCR_USAGE_READ_FAILED")
+        return value
 
     def _write(self, value: dict[str, int]) -> None:
-        self.path.parent.mkdir(parents=True, exist_ok=True)
-        temporary = self.path.with_suffix(".tmp")
-        temporary.write_text(json.dumps(value, separators=(",", ":")), encoding="utf-8")
-        os.replace(temporary, self.path)
+        temporary = None
+        try:
+            self.path.parent.mkdir(parents=True, exist_ok=True)
+            with tempfile.NamedTemporaryFile(mode="w", encoding="utf-8", dir=self.path.parent,
+                                             prefix=self.path.name + ".", suffix=".tmp",
+                                             delete=False) as output:
+                temporary = Path(output.name)
+                output.write(json.dumps(value, separators=(",", ":")))
+                output.flush()
+                os.fsync(output.fileno())
+            os.replace(temporary, self.path)
+        except OSError:
+            raise UsageStorageError("OCR_USAGE_WRITE_FAILED") from None
+        finally:
+            if temporary is not None:
+                try:
+                    temporary.unlink(missing_ok=True)
+                except OSError:
+                    pass
 
     @staticmethod
     def _keys(now: datetime | None = None) -> tuple[str, str]:

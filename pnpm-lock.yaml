@@ -123,6 +123,9 @@ importers:
       '@mui/material':
         specifier: 9.4.0
         version: 9.4.0(@emotion/react@11.14.0(@types/react@19.3.0)(react@19.3.0))(@emotion/styled@11.14.1(@emotion/react@11.14.0(@types/react@19.3.0)(react@19.3.0))(@types/react@19.3.0)(react@19.3.0))(@types/react@19.3.0)(react-dom@19.3.0(react@19.3.0))(react@19.3.0)
+      '@notario/api-client':
+        specifier: workspace:*
+        version: link:../api-client
       lucide-react:
         specifier: ^0.577.0
         version: 0.577.0(react@19.3.0)

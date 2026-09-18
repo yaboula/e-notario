@@ -6,9 +6,12 @@ import ipaddress
 import json
 import os
 import secrets
+import signal
 import socket
 import sys
+import threading
 import webbrowser
+from contextlib import contextmanager
 from dataclasses import dataclass
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
@@ -167,22 +170,65 @@ def ensure_lan_configuration() -> dict[str, str] | None:
     return {"ip": address, "mode": mode}
 
 
+async def run_shared_app(app, servers):
+    """Own the shared state lifecycle once, not once per HTTP/HTTPS listener."""
+    original_handlers = {}
+
+    def request_shutdown(sig, _frame):
+        for server in servers:
+            if getattr(server, "should_exit", False) and sig == signal.SIGINT:
+                server.force_exit = True
+            server.should_exit = True
+
+    if threading.current_thread() is threading.main_thread():
+        signals = [signal.SIGINT, signal.SIGTERM]
+        if hasattr(signal, "SIGBREAK"):
+            signals.append(signal.SIGBREAK)
+        original_handlers = {sig: signal.signal(sig, request_shutdown) for sig in signals}
+    try:
+        async with app.router.lifespan_context(app):
+            await asyncio.gather(*(server.serve() for server in servers))
+    finally:
+        for sig, handler in original_handlers.items():
+            signal.signal(sig, handler)
+
+
 async def serve(open_browser: bool):
     import uvicorn
     from .api import create_app
+    from cnie_cases import DpapiDataProtector, EncryptedSqliteCaseStore
+    from .workspace_store import DpapiWorkspaceProtector, EncryptedWorkspaceStore
+    from cnie_profiles import ProtectedProfileStore
+
+    class SharedStateServer(uvicorn.Server):
+        @contextmanager
+        def capture_signals(self):
+            # The process coordinator stops both listeners; neither owns signals.
+            yield
 
     token = os.environ.get("CNIE_DESKTOP_TOKEN") or secrets.token_urlsafe(32)
     packaged = getattr(sys, "_MEIPASS", None)
     root = Path(packaged) if packaged else Path(__file__).resolve().parents[2]
     lan = ensure_lan_configuration()
     mobile_url = f"https://{lan['ip']}:8788" if lan else None
+    case_store = EncryptedSqliteCaseStore(
+        settings_dir() / "temporary-cases.sqlite3", DpapiDataProtector())
+    profile_store = ProtectedProfileStore(
+        settings_dir() / "professional-profiles.dpapi",
+        DpapiDataProtector(entropy=b"e-notario-v2/professional-profiles/v1",
+                           description="e-notario professional profiles"))
+    workspace_store = EncryptedWorkspaceStore(
+        settings_dir() / "temporary-workspace.sqlite3", DpapiWorkspaceProtector())
     app = create_app(desktop_token=token, mobile_url=mobile_url, lan_mode=lan.get("mode") if lan else None,
+        case_store=case_store, profile_store=profile_store, workspace_store=workspace_store,
+        saved_receipts_path=settings_dir() / "saved-case-receipts.dpapi",
         desktop_dist=root / "apps/desktop/dist", mobile_dist=root / "apps/mobile-capture/dist")
-    common = dict(app=app, access_log=False, log_level="error", limit_concurrency=24, timeout_keep_alive=5)
-    servers = [uvicorn.Server(uvicorn.Config(host="127.0.0.1", port=8787, **common))]
+    common = dict(app=app, lifespan="off", access_log=False, log_level="error",
+                  limit_concurrency=24, timeout_keep_alive=5)
+    servers = [SharedStateServer(uvicorn.Config(host="127.0.0.1", port=8787, **common))]
     if lan:
         folder = settings_dir() / "tls"
-        servers.append(uvicorn.Server(uvicorn.Config(host=lan["ip"], port=8788,
+        servers.append(SharedStateServer(uvicorn.Config(host=lan["ip"], port=8788,
             ssl_keyfile=str(folder / "server.key"), ssl_certfile=str(folder / "server.crt"), **common)))
     if open_browser:
         async def open_when_ready():
@@ -192,7 +238,7 @@ async def serve(open_browser: bool):
                     return
                 await asyncio.sleep(0.1)
         asyncio.create_task(open_when_ready())
-    await asyncio.gather(*(server.serve() for server in servers))
+    await run_shared_app(app, servers)
 
 
 def main():
@@ -211,7 +257,11 @@ def main():
         print(json.dumps({"ip": selection.address, "source": selection.source,
                           "candidates": selection.candidates}, separators=(",", ":")))
     else:
-        asyncio.run(serve(args.open))
+        try:
+            asyncio.run(serve(args.open))
+        except KeyboardInterrupt:
+            # Console and service-manager shutdown is expected, not a crash.
+            pass
 
 
 if __name__ == "__main__":

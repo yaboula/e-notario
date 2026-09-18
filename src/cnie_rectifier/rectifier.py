@@ -21,7 +21,7 @@ from .geometry import (
     warp_card,
 )
 from .image_io import decode_image, encode_jpeg
-from .quality import capture_quality, rejection_codes
+from .quality import capture_quality, card_sharpness, rejection_codes
 
 
 DetectorMode = Literal["hybrid", "opencv", "docquadnet"]
@@ -187,9 +187,11 @@ class CnieRectifier:
                     )
                     timings["perspective_warp"] = (perf_counter() - stage) * 1000
                     quality.update(warp_metrics)
+                    quality.update(card_sharpness(rectified))
+                    rejected.extend(rejection_codes(quality, self.config))
                     if float(warp_metrics["black_border_ratio"]) > self.config.max_black_border_ratio:
                         rejected.append("MATERIAL_BLACK_BORDER")
-                    else:
+                    if not rejected:
                         stage = perf_counter()
                         rectified_bytes = encode_jpeg(rectified, self.config.jpeg_quality)
                         timings["jpeg_encode"] = (perf_counter() - stage) * 1000

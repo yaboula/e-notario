@@ -1,7 +1,7 @@
 {
   "$schema": "https://schema.tauri.app/config/2",
   "productName": "e-notario",
-  "version": "0.6.1",
+  "version": "0.8.0-alpha.3",
   "identifier": "com.enotario.workspace.v2",
   "build": {
     "beforeDevCommand": "pnpm dev",
@@ -10,15 +10,15 @@
     "frontendDist": "../dist"
   },
   "app": {
-    "windows": [{"title":"e-notario · Estación de captura","width":1440,"height":960,"minWidth":900,"minHeight":680,"center":true}],
+    "windows": [{"title":"e-notario · Estación profesional","width":1440,"height":960,"minWidth":900,"minHeight":680,"center":true}],
     "security": {"csp":"default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' blob: data:; font-src 'self'; connect-src ipc: http://ipc.localhost http://127.0.0.1:8787 ws://127.0.0.1:8787; frame-ancestors 'none'; base-uri 'self'"}
   },
   "bundle": {
     "active": true,
     "targets": ["nsis"],
     "resources": {"binaries/cnie-capture/": "sidecar/"},
-    "shortDescription": "Captura, rectificación local y OCR europeo de documentos CNIE",
+    "shortDescription": "Expedientes CNIE y generación profesional de documentos Word",
     "category": "Business",
-    "windows": {"webviewInstallMode":{"type":"downloadBootstrapper"}}
+    "windows": {"allowDowngrades":false,"webviewInstallMode":{"type":"downloadBootstrapper"}}
   }
 }

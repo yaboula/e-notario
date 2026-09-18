@@ -44,11 +44,12 @@ def _blob(value: bytes) -> tuple[_Blob, Any]:
     return _Blob(len(value), ctypes.cast(buffer, ctypes.POINTER(ctypes.c_ubyte))), buffer
 
 
-def _crypt(value: bytes, protect: bool) -> bytes:
+def _crypt(value: bytes, protect: bool, *, entropy_value: bytes = ENTROPY,
+           description: str = "e-notario Google Vision") -> bytes:
     if os.name != "nt":
         raise CredentialError("OCR_CREDENTIAL_STORAGE_UNAVAILABLE")
     source, source_buffer = _blob(value)
-    entropy, entropy_buffer = _blob(ENTROPY)
+    entropy, entropy_buffer = _blob(entropy_value)
     destination = _Blob()
     crypt32 = ctypes.WinDLL("crypt32", use_last_error=True)
     kernel32 = ctypes.WinDLL("kernel32", use_last_error=True)
@@ -61,9 +62,9 @@ def _crypt(value: bytes, protect: bool) -> bytes:
     ]
     kernel32.LocalFree.restype = ctypes.c_void_p
     kernel32.LocalFree.argtypes = [ctypes.c_void_p]
-    description = "e-notario Google Vision" if protect else None
+    protected_description = description if protect else None
     arguments = (
-        ctypes.byref(source), description, ctypes.byref(entropy), None, None,
+        ctypes.byref(source), protected_description, ctypes.byref(entropy), None, None,
         0x1, ctypes.byref(destination),
     ) if protect else (
         ctypes.byref(source), None, ctypes.byref(entropy), None, None,
@@ -77,6 +78,15 @@ def _crypt(value: bytes, protect: bool) -> bytes:
         # Keep the input buffers alive through the native call.
         _ = source_buffer, entropy_buffer
         kernel32.LocalFree(ctypes.cast(destination.pbData, ctypes.c_void_p))
+
+
+def protect_current_user(value: bytes, *, entropy: bytes = ENTROPY,
+                         description: str = "e-notario protected data") -> bytes:
+    return _crypt(value, True, entropy_value=entropy, description=description)
+
+
+def unprotect_current_user(value: bytes, *, entropy: bytes = ENTROPY) -> bytes:
+    return _crypt(value, False, entropy_value=entropy)
 
 
 def validate_service_account(payload: bytes) -> tuple[CredentialMetadata, dict[str, Any]]:

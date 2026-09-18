@@ -23,13 +23,16 @@ class RectifierConfig:
     min_card_diagonal_ratio: float = 0.50
     max_card_area_ratio: float = 0.94
     min_border_distance_ratio: float = 0.008
-    # Office-balanced profile: geometry, resolution and legibility remain hard
-    # gates, while ordinary background/lighting variation is not treated as a
+    # Office-balanced profile: geometry, resolution and lighting remain hard
+    # gates, while ordinary background variation is not treated as a
     # recapture by itself.
     min_edge_support: float = 0.26
     min_color_edge_support: float = 0.24
     min_boundary_side_support: float = 0.12
     min_boundary_supported_sides: int = 3
+    # Card-only score at a fixed 1000 x 630 analysis size. Enable a hard blur
+    # gate only with a threshold calibrated on an authorized CNIE corpus.
+    min_card_laplacian_variance: float | None = None
     min_classical_score: float = 0.56
     # An exceptionally well-supported classical boundary may safely win when
     # the model itself is invalid and one of its corner peaks drifted. This is

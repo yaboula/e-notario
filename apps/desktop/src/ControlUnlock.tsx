@@ -78,8 +78,23 @@ export function ControlUnlock({base,bootstrapToken,version,onUnlocked}:{base:str
       String(data.detail):'LOCAL_CONTROL_FAILED');
     return data as T;
   }
-  useEffect(()=>{void local<StationState>('/api/control/station').then(setStation)
-    .catch(()=>setError(t.error))},[base,bootstrapToken]);
+  useEffect(()=>{
+    let cancelled=false;
+    void (async()=>{
+      for(let attempt=0;attempt<20;attempt+=1){
+        try{
+          const loaded=await local<StationState>('/api/control/station');
+          if(!cancelled){setStation(loaded);setError('');}
+          return;
+        }catch{
+          if(cancelled)return;
+          if(attempt===19){setError(t.error);return;}
+          await new Promise(resolve=>setTimeout(resolve,250));
+        }
+      }
+    })();
+    return()=>{cancelled=true};
+  },[base,bootstrapToken,t.error]);
 
   async function finishOnline(who:ControlIdentity) {
     if (!control || !auth || !station || !who.organization_id) throw new Error('CLOUD_UNAVAILABLE');

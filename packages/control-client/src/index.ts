@@ -74,15 +74,16 @@ export class ControlClient {
   private async request<T>(path: string, method = 'GET', payload?: object): Promise<T> {
     const token = await this.getToken();
     if (!token) throw new ControlError(401, 'CONTROL_AUTH_REQUIRED');
-    const response = await this.fetcher(`${this.functionUrl.replace(/\/$/, '')}${path}`, {
-      method, headers: {
-        Authorization: `Bearer ${token}`,
-        apikey: this.publishableKey,
-        ...(payload ? {'Content-Type': 'application/json'} : {}),
-      },
-      body: payload ? JSON.stringify(payload) : undefined,
-      cache: 'no-store', credentials: 'omit',
-    });
+    const response = await this.fetcher.call(globalThis,
+      `${this.functionUrl.replace(/\/$/, '')}${path}`, {
+        method, headers: {
+          Authorization: `Bearer ${token}`,
+          apikey: this.publishableKey,
+          ...(payload ? {'Content-Type': 'application/json'} : {}),
+        },
+        body: payload ? JSON.stringify(payload) : undefined,
+        cache: 'no-store', credentials: 'omit',
+      });
     let data: unknown;
     try { data = await response.json(); }
     catch { throw new ControlError(response.status, 'CONTROL_BAD_RESPONSE'); }

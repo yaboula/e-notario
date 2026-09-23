@@ -1,6 +1,6 @@
 # Fase 2 · Estado de implementación
 
-Fecha: 2026-09-20. Piloto previsto: hasta cinco despachos de Marruecos y entre uno y tres PC por despacho. Esta nota no altera ni reclasifica los pendientes de Fase 1.
+Fecha base: 2026-09-20. Actualizado: 2026-09-23. Piloto previsto: hasta cinco despachos de Marruecos y entre uno y tres PC por despacho. Esta nota no altera ni reclasifica los pendientes de Fase 1.
 
 ## Decisiones cerradas
 
@@ -16,6 +16,10 @@ Fecha: 2026-09-20. Piloto previsto: hasta cinco despachos de Marruecos y entre u
 ## Implementado en el repositorio
 
 ### Control SaaS
+
+- Cloudflare Pages publica el portal como `valiris-desk` desde la rama `codex/valiris-desk-phase2`, con dominio `https://desk.valiris.es`, variables públicas de build, fallback SPA y cabeceras de seguridad.
+- Supabase `valiris-desk-prod` (`zbngaqldayjyebvxqncq`) está activo en Frankfurt. Auth usa `https://desk.valiris.es` y permite únicamente `/accept-invite` y `/recover`. La migración `202609200001_control_v1.sql`, los secretos de control y `control-v1` están desplegados.
+- La clave Ed25519 de autorizaciones locales usa `kid=valiris-lease-2026-09-a`; la privada permanece en Supabase y en una copia DPAPI del usuario de despliegue. La función usa la clave administrativa integrada `SUPABASE_SECRET_KEYS.default`, sin duplicarla como secreto manual.
 
 - `supabase/migrations/202609200001_control_v1.sql`: organizaciones, membresías, licencias, estaciones, retos, auditoría, RLS y funciones transaccionales con límites de estaciones. La auditoría diferencia invitación, restauración y revocación, y registra cada autorización local emitida para hacer trazables las renovaciones sin almacenar datos CNIE.
 - Las identidades administrativas de plataforma quedan separadas de los despachos: el bootstrap rechaza promover a un miembro existente y la función transaccional rechaza añadir como titular u operador una cuenta ya promovida. Esto evita que una cuenta de cliente acumule por error privilegios globales.
@@ -70,8 +74,8 @@ Fecha: 2026-09-20. Piloto previsto: hasta cinco despachos de Marruecos y entre u
 ## Pendiente antes del piloto real
 
 1. Completar la revisión visual con fotografías CNIE autorizadas que recorran captura, OCR y revisión estructurada; validar la terminología final con usuarios francófonos y arabófonos antes de entregar. El expediente completo, los perfiles profesionales y su edición desde Windows y móvil ya se revisaron con datos representativos a 1366×768 y 360×780.
-2. Crear el proyecto Supabase en Frankfurt, configurar dominio y SMTP, generar la clave Ed25519 de producción, guardar el secreto solo en la función y ejecutar la compilación Windows `-Control` con su clave pública.
-3. Ejecutar en infraestructura real el despliegue y alta inicial definidos en `PHASE2_PILOT_RUNBOOK.md`; el bootstrap idempotente del primer administrador ya está preparado en `supabase/bootstrap/first-platform-admin.psql`.
+2. Configurar SMTP, políticas Auth y el primer administrador de plataforma; después ejecutar las pruebas de autorización e aislamiento con cuentas de ensayo.
+3. Compilar Windows `-Control` con `kid=valiris-lease-2026-09-a` y su clave pública, y completar los gates externos definidos en `PHASE2_PILOT_RUNBOOK.md` antes de autorizar el primer despacho.
 4. Hacer una validación corta en infraestructura real: aislamiento entre dos despachos, MFA, revocación de estación, renovación, siete días sin conexión y cierre de 24 horas.
 5. Firmar y distribuir el instalador de control del piloto. El procedimiento de soporte, copia de configuración y rotación de claves ya está preparado en `PHASE2_SUPPORT_PLAYBOOK.md` y debe validarse con los responsables reales.
 

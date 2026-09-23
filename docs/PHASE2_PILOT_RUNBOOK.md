@@ -16,7 +16,7 @@ Este procedimiento cubre la puesta en marcha controlada del primer entorno y de 
 
 ## 2. Desplegar base de datos y API
 
-Desde la raíz del repositorio, con Supabase CLI autenticado. Preparar fuera del repositorio un archivo temporal de secretos aceptado por `supabase secrets set --env-file`; debe contener `CONTROL_SUPABASE_SECRET_KEY`, `CONTROL_PORTAL_URL`, `CONTROL_LEASE_PRIVATE_KEY_PEM` y `CONTROL_LEASE_KEY_ID`. Restringir su lectura al usuario que despliega y borrarlo al terminar.
+Desde la raíz del repositorio, con Supabase CLI autenticado. Preparar fuera del repositorio un archivo temporal de secretos aceptado por `supabase secrets set --env-file`; debe contener `CONTROL_PORTAL_URL`, `CONTROL_LEASE_PRIVATE_KEY_PKCS8_B64` y `CONTROL_LEASE_KEY_ID`. Restringir su lectura al usuario que despliega y borrarlo al terminar. La función obtiene la clave administrativa de `SUPABASE_SECRET_KEYS.default`, que la plataforma inyecta automáticamente.
 
 El repositorio ya está inicializado para Supabase CLI mediante `supabase/config.toml`. Su configuración Auth local reproduce las barreras del piloto (sin alta pública, contraseña de 12 caracteres y TOTP disponible). La pasarela deja llegar las peticiones a `control-v1`; la función exige `Authorization: Bearer` y verifica el token con Supabase Auth en cada solicitud antes de comprobar membresía y MFA. Así el piloto no depende de que la verificación heredada de la pasarela acepte las claves JWT asimétricas. `supabase db push` aplica solo las migraciones: no sustituye los ajustes de Auth del paso 1. No ejecutar `supabase config push` con este archivo local, porque incluye la URL `127.0.0.1` para desarrollo. Dominio, SMTP y claves del proyecto alojado se configuran explícitamente y no se versionan.
 

@@ -3,11 +3,31 @@ import { importPKCS8, SignJWT } from "npm:jose@6.2.12";
 import { base64url, fromBase64url, isUuid, leaseWindow, stationProofMessage } from "./lib.ts";
 
 const supabaseUrl = Deno.env.get("SUPABASE_URL");
-const secretKey = Deno.env.get("CONTROL_SUPABASE_SECRET_KEY");
+const secretKey = adminSecretKey();
 if (!supabaseUrl || !secretKey) throw new Error("CONTROL_CONFIGURATION_MISSING");
 const service = createClient(supabaseUrl, secretKey, {
   auth: { autoRefreshToken: false, persistSession: false },
 });
+
+function adminSecretKey(): string | undefined {
+  const configured = Deno.env.get("CONTROL_SUPABASE_SECRET_KEY");
+  if (configured) return configured;
+  try {
+    const keys = JSON.parse(Deno.env.get("SUPABASE_SECRET_KEYS") ?? "{}") as Record<string, unknown>;
+    return typeof keys.default === "string" ? keys.default : undefined;
+  } catch {
+    return undefined;
+  }
+}
+
+function leasePrivateKeyPem(): string | undefined {
+  const pem = Deno.env.get("CONTROL_LEASE_PRIVATE_KEY_PEM");
+  if (pem) return pem.replaceAll("\\n", "\n");
+  const encoded = Deno.env.get("CONTROL_LEASE_PRIVATE_KEY_PKCS8_B64");
+  if (!encoded || !/^[A-Za-z0-9+/]+={0,2}$/.test(encoded)) return undefined;
+  const lines = encoded.match(/.{1,64}/g);
+  return lines ? `-----BEGIN PRIVATE KEY-----\n${lines.join("\n")}\n-----END PRIVATE KEY-----\n` : undefined;
+}
 
 function arrayBuffer(bytes: Uint8Array): ArrayBuffer {
   const copy = new Uint8Array(bytes.length);
@@ -196,7 +216,7 @@ async function invite(actorId: string, organizationId: string, recipient: string
 }
 
 async function leaseToken(user: Actor, stationId: string, endsAt: string, role: string) {
-  const pem = Deno.env.get("CONTROL_LEASE_PRIVATE_KEY_PEM");
+  const pem = leasePrivateKeyPem();
   const keyId = Deno.env.get("CONTROL_LEASE_KEY_ID");
   must(pem && keyId && /^[A-Za-z0-9._-]{1,64}$/.test(keyId),
     503, "CONTROL_CONFIGURATION_MISSING");

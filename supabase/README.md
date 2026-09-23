@@ -4,20 +4,20 @@ Este directorio contiene únicamente el control de despachos, cuentas, estacione
 
 ## Estado
 
-La migración, `control-v1`, el cliente tipado, la configuración local de Supabase CLI y el portal administrativo FR/AR constituyen la base de implementación. Windows y móvil ya aplican cuentas personales y autorizaciones locales en el repositorio. Todavía no existe un proyecto Supabase alojado y configurado, ni se ha desplegado o autorizado el piloto a clientes. La región propuesta es `eu-central-1` (Frankfurt). La contratación y renovación son manuales.
+La migración, `control-v1`, el cliente tipado, la configuración local de Supabase CLI y el portal administrativo FR/AR constituyen la base de implementación. Windows y móvil ya aplican cuentas personales y autorizaciones locales en el repositorio. El entorno alojado del piloto es `valiris-desk-prod` (`zbngaqldayjyebvxqncq`) en `eu-central-1` (Frankfurt); la migración y `control-v1` están desplegadas, pero el piloto aún no está autorizado a clientes. La contratación y renovación son manuales.
 
 ## Componentes y secretos
 
 - Proyecto Supabase gestionado con Auth, Postgres y Edge Functions. Activar claves JWT asimétricas y MFA TOTP para titulares y administradores de plataforma.
 - Correo SMTP propio para invitaciones. El proveedor integrado de prueba no sirve para usuarios reales.
-- `CONTROL_SUPABASE_SECRET_KEY`: clave secreta del proyecto, **solo** en Edge Functions.
+- La función usa `SUPABASE_SECRET_KEYS.default`, que Supabase inyecta automáticamente y mantiene fuera del repositorio. `CONTROL_SUPABASE_SECRET_KEY` queda como compatibilidad para entornos anteriores.
 - `CONTROL_PORTAL_URL`: URL HTTPS del portal para completar invitaciones. Configurar también `/accept-invite` y `/recover` como redirecciones Auth permitidas y el hosting con fallback al `index.html`.
-- `CONTROL_LEASE_PRIVATE_KEY_PEM`: clave Ed25519 PKCS#8 para autorizar trabajo local; nunca en el instalador ni en Git.
+- `CONTROL_LEASE_PRIVATE_KEY_PKCS8_B64`: clave privada Ed25519 PKCS#8 codificada en base64 para autorizar trabajo local; nunca en el instalador ni en Git. La forma PEM anterior sigue admitida para rotaciones existentes.
 - `CONTROL_LEASE_KEY_ID`: identificador público de esa clave. El instalador incluye solo su clave pública, con rotación controlada.
 
 El portal usa solo `VITE_SUPABASE_URL` y `VITE_SUPABASE_PUBLISHABLE_KEY` de `apps/control-portal/.env.example`; ninguna clave secreta se incluye en Vite. Debe publicarse por HTTPS con cabeceras CSP y `Cache-Control: no-store` para HTML. Las claves de firma de licencia y del actualizador Tauri deben ser diferentes. La cuenta de Google Vision permanece en cada estación del despacho.
 
-La variante Windows de control usa los mismos dos valores públicos en `apps/desktop/.env.production` y recibe durante la compilación `ENOTARIO_CONTROL_LEASE_KEY_ID` y `ENOTARIO_CONTROL_LEASE_PUBLIC_KEY`. Durante una rotación puede recibir `ENOTARIO_CONTROL_LEASE_PUBLIC_KEYS` con entre uno y tres pares `kid=base64url` separados por `;`; la configuración antigua de una sola clave sigue siendo válida. La clave privada `CONTROL_LEASE_PRIVATE_KEY_PEM` permanece únicamente como secreto de la función desplegada.
+La variante Windows de control usa los mismos dos valores públicos en `apps/desktop/.env.production` y recibe durante la compilación `ENOTARIO_CONTROL_LEASE_KEY_ID` y `ENOTARIO_CONTROL_LEASE_PUBLIC_KEY`. Durante una rotación puede recibir `ENOTARIO_CONTROL_LEASE_PUBLIC_KEYS` con entre uno y tres pares `kid=base64url` separados por `;`; la configuración antigua de una sola clave sigue siendo válida. La clave privada permanece únicamente como secreto de la función desplegada y como copia local protegida por Windows DPAPI para recuperación operativa.
 
 Para producir el instalador firmado del piloto, configure además `ENOTARIO_SIGNING_THUMBPRINT` y `ENOTARIO_TIMESTAMP_URL`, y ejecute `powershell -File scripts/build-release.ps1 -Control` desde la raíz. El script valida la URL, la clave publicable, el `kid` y la clave pública antes de compilar, activa la característica Tauri `control` y comprueba la firma del sidecar y del instalador. Sin `-Control` mantiene la compilación local de Fase 1. Nunca pase `CONTROL_LEASE_PRIVATE_KEY_PEM` al proceso de compilación.
 
@@ -44,4 +44,4 @@ La recuperación de acceso, cambio de PC, OCR, copia de configuración y rotaci�
 
 ## Verificación local
 
-Desde `supabase/functions/control-v1`: `npx deno check index.ts` y `npx deno test lib_test.ts`. Desde la raíz: `pnpm --filter @notario/control-portal build` y `.venv/Scripts/python.exe -m pytest -q tests/test_control_grant.py`. La migración debe ejecutarse en un proyecto Supabase de pruebas antes de desplegar el portal. En este puesto no hay Docker/Supabase local en funcionamiento; el análisis sintáctico PostgreSQL no sustituye su ejecución real ni pruebas de autorización entre despachos.
+Desde `supabase/functions/control-v1`: `npx deno check index.ts` y `npx deno test lib_test.ts`. Desde la raíz: `pnpm --filter @notario/control-portal build` y `.venv/Scripts/python.exe -m pytest -q tests/test_control_grant.py`. La migración de producción se aplicó correctamente y la función desplegada respondió `401 CONTROL_AUTH_REQUIRED` a una solicitud sin sesión, confirmando arranque y rechazo de acceso anónimo. Aún faltan las pruebas reales de autorización y aislamiento entre despachos antes del piloto.

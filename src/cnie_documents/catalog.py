@@ -17,7 +17,7 @@ from .domain import DocumentTemplate, DocumentTemplateError, TemplateBinding, Te
 SCHEMA_V1 = "enotario.document-template/v1"
 SCHEMA_V2 = "enotario.document-template/v2"
 SUPPORTED_SCHEMA_VERSIONS = {SCHEMA_V1, SCHEMA_V2}
-GENERATOR_VERSION = "0.8.0-alpha.6"
+GENERATOR_VERSION = "0.8.0-alpha.7"
 MAX_DOCX_BYTES = 25 * 1024 * 1024
 W = "http://schemas.openxmlformats.org/wordprocessingml/2006/main"
 R = "http://schemas.openxmlformats.org/officeDocument/2006/relationships"

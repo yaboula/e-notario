@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "cnie-rectifier"
-version = "0.8.0a6"
+version = "0.8.0a7"
 description = "Local CNIE document detection and perspective rectification"
 readme = "README.md"
 requires-python = ">=3.11,<3.14"

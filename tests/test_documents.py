@@ -215,7 +215,7 @@ def test_marriage_render_preserves_original_flow_manual_controls_and_scrubs_meta
         core = package.read("docProps/core.xml")
         assert b"python-docx" not in core
         custom = package.read("docProps/custom.xml")
-        assert b"ma.marriage@1.7.0" in custom and b"0.8.0-alpha.6" in custom
+        assert b"ma.marriage@1.7.0" in custom and b"0.8.0-alpha.7" in custom
 
 
 def test_marriage_allows_one_identity_in_different_roles_using_role_grammar():

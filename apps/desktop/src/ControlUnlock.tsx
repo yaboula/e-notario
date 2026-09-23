@@ -16,6 +16,7 @@ const copy = {
     enroll:'Configurer le second facteur',scan:'Scannez ce code QR avec votre application d’authentification.',
     mfaQr:'Code QR de configuration TOTP',
     secret:'Clé manuelle',verify:'Vérifier',error:'Impossible de vous connecter. Vérifiez vos identifiants, votre licence et la connexion.',
+    localServiceError:'Le service local met plus de temps que prévu à démarrer. Valiris Desk poursuit la connexion automatiquement.',
     offlineError:'Accès hors ligne refusé. Vérifiez votre mot de passe et la durée de l’autorisation.',
     stationError:'Ce poste appartient à un autre cabinet.',holderRequired:'Le titulaire doit activer ce poste avant la première utilisation.',
     cloudMissing:'La connexion en ligne n’est pas encore configurée sur ce poste.',
@@ -29,6 +30,7 @@ const copy = {
     enroll:'إعداد عامل التحقق الثاني',scan:'امسح رمز الاستجابة السريعة بتطبيق المصادقة.',
     mfaQr:'رمز الاستجابة السريعة لإعداد المصادقة',
     secret:'المفتاح اليدوي',verify:'تحقق',error:'تعذر تسجيل الدخول. تحقق من بياناتك والترخيص والاتصال.',
+    localServiceError:'يستغرق تشغيل الخدمة المحلية وقتًا أطول من المتوقع. سيواصل Valiris Desk الاتصال تلقائيًا.',
     offlineError:'رُفض الدخول دون إنترنت. تحقق من كلمة المرور ومدة الترخيص.',
     stationError:'هذا الجهاز تابع لمكتب آخر.',holderRequired:'يجب على صاحب المكتب تفعيل هذا الجهاز أولاً.',
     cloudMissing:'لم يُضبط الاتصال عبر الإنترنت على هذا الجهاز بعد.',
@@ -56,6 +58,7 @@ export function ControlUnlock({base,bootstrapToken,version,onUnlocked}:{base:str
   const [mode,setMode] = useState<'online'|'offline'>('online');
   const [busy,setBusy] = useState(false);
   const [error,setError] = useState('');
+  const [localServiceUnavailable,setLocalServiceUnavailable] = useState(false);
   const [identity,setIdentity] = useState<ControlIdentity|null>(null);
   const [mfaFactor,setMfaFactor] = useState('');
   const [mfaCode,setMfaCode] = useState('');
@@ -81,20 +84,22 @@ export function ControlUnlock({base,bootstrapToken,version,onUnlocked}:{base:str
   useEffect(()=>{
     let cancelled=false;
     void (async()=>{
-      for(let attempt=0;attempt<20;attempt+=1){
+      let failedAttempts=0;
+      while(!cancelled){
         try{
           const loaded=await local<StationState>('/api/control/station');
-          if(!cancelled){setStation(loaded);setError('');}
+          if(!cancelled){setStation(loaded);setLocalServiceUnavailable(false);}
           return;
         }catch{
           if(cancelled)return;
-          if(attempt===19){setError(t.error);return;}
-          await new Promise(resolve=>setTimeout(resolve,250));
+          failedAttempts+=1;
+          if(failedAttempts>=20)setLocalServiceUnavailable(true);
+          await new Promise(resolve=>setTimeout(resolve,500));
         }
       }
     })();
     return()=>{cancelled=true};
-  },[base,bootstrapToken,t.error]);
+  },[base,bootstrapToken]);
 
   async function finishOnline(who:ControlIdentity) {
     if (!control || !auth || !station || !who.organization_id) throw new Error('CLOUD_UNAVAILABLE');
@@ -183,7 +188,7 @@ export function ControlUnlock({base,bootstrapToken,version,onUnlocked}:{base:str
       {mfaStep==='none'?<><div className="control-unlock-modes"><button className={mode==='online'?'selected':''} onClick={()=>{setMode('online');setError('')}}>{t.online}</button><button className={mode==='offline'?'selected':''} onClick={()=>{setMode('offline');setError('')}}>{t.offline}</button></div>
         <form onSubmit={signIn}><label>{t.email}<input type="email" required autoComplete="username" value={email} onChange={event=>setEmail(event.target.value)}/></label><label>{t.password}<input type="password" required minLength={mode==='online'?12:1} autoComplete="current-password" value={password} onChange={event=>setPassword(event.target.value)}/></label>{mode==='online'&&!station?.station_id&&<label>{t.station}<input required maxLength={80} value={stationLabel} onChange={event=>setStationLabel(event.target.value)}/></label>}<button type="submit" className="control-primary" disabled={busy||!station}>{busy?t.busy:t.submit}</button></form>
         <small>{mode==='offline'?t.offlineHelp:t.license}</small></>:<>{mfaStep==='enroll'&&!mfaFactor&&<button className="control-primary" disabled={busy} onClick={()=>void enroll()}>{t.enroll}</button>}{qr&&<><p>{t.scan}</p><img className="control-qr" src={qr} alt={t.mfaQr}/><p>{t.secret}: <code dir="ltr">{secret}</code></p></>}<form onSubmit={verifyMfa}><label>{t.mfa}<input inputMode="numeric" pattern="[0-9]{6}" maxLength={6} required value={mfaCode} onChange={event=>setMfaCode(event.target.value)}/></label><button type="submit" className="control-primary" disabled={busy||!mfaFactor}>{busy?t.busy:t.verify}</button></form></>}
-      {error&&<p role="alert" className="control-error">{error}</p>}
+      {(error||localServiceUnavailable)&&<p role="alert" className="control-error">{error||t.localServiceError}</p>}
     </div>
   </main>;
 }

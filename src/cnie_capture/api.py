@@ -1001,7 +1001,7 @@ def create_app(*, desktop_token: str | None = None, engine=None, ocr_engine=None
                 state.session_labels.clear()
                 state.idempotency.clear()
 
-    app = FastAPI(title="Valiris Desk · Capture service", version="0.8.0-alpha.6", lifespan=lifespan,
+    app = FastAPI(title="Valiris Desk · Capture service", version="0.8.0-alpha.7", lifespan=lifespan,
                   docs_url=None, redoc_url=None, openapi_url=None)
     app.state.capture = state
     @app.exception_handler(UsageStorageError)
@@ -1438,7 +1438,7 @@ def create_app(*, desktop_token: str | None = None, engine=None, ocr_engine=None
 
     @app.get("/api/health")
     def health():
-        return {"status": "ok", "version": "0.8.0-alpha.6", "api_version": 2,
+        return {"status": "ok", "version": "0.8.0-alpha.7", "api_version": 2,
                 "background": {
                     "ocr_worker": "running" if state.worker_task and not state.worker_task.done() else "stopped",
                     "maintenance": "running" if state.cleanup_task and not state.cleanup_task.done() else "stopped",

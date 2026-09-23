@@ -15,6 +15,8 @@ from .domain import DetectorKind, DetectorResult, RectificationResult, Rectifica
 from .errors import InvalidImageError
 from .geometry import (
     mean_corner_distance_ratio,
+    is_convex,
+    is_self_intersecting,
     order_quad,
     quad_iou,
     refine_quad_with_edges,
@@ -22,6 +24,7 @@ from .geometry import (
 )
 from .image_io import decode_image, encode_jpeg
 from .quality import capture_quality, card_sharpness, rejection_codes
+from .enhancement import enhance_card
 
 
 DetectorMode = Literal["hybrid", "opencv", "docquadnet"]
@@ -44,7 +47,8 @@ class CnieRectifier:
         self.opencv_detector = opencv_detector or OpenCvDetector(self.config)
         self.docquad_detector = docquad_detector or DocQuadDetector(self.config, model_path)
 
-    def rectify(self, image: bytes, request_id: UUID | None = None) -> RectificationResult:
+    def rectify(self, image: bytes, request_id: UUID | None = None, *,
+                manual_corners: list[list[float]] | None = None) -> RectificationResult:
         request_uuid = request_id or uuid4()
         total_started = perf_counter()
         timings: dict[str, float] = {}
@@ -62,9 +66,25 @@ class CnieRectifier:
             )
 
         height, width = decoded.shape[:2]
+        manual_quad = None
+        if manual_corners is not None:
+            try:
+                normalized = np.asarray(manual_corners, dtype=np.float32)
+                if normalized.shape != (4, 2) or not np.isfinite(normalized).all() \
+                        or np.any(normalized < 0) or np.any(normalized > 1):
+                    raise ValueError("INVALID_MANUAL_CORNERS")
+                manual_quad = normalized * np.array([width - 1, height - 1], dtype=np.float32)
+                # Validate submitted order before sorting: crossed handles are an error.
+                if not is_convex(manual_quad) or is_self_intersecting(manual_quad):
+                    raise ValueError("INVALID_MANUAL_CORNERS")
+            except (TypeError, ValueError):
+                return RectificationResult(
+                    status=RectificationStatus.RECAPTURE_REQUIRED, request_id=request_uuid,
+                    original_dimensions=(width, height), rejection_codes=["INVALID_MANUAL_CORNERS"],
+                )
         opencv = DetectorResult(valid=False, available=self.detector_mode != "docquadnet")
         docquad = DetectorResult(valid=False, available=self.detector_mode != "opencv")
-        if self.detector_mode in {"hybrid", "opencv"}:
+        if manual_quad is None and self.detector_mode in {"hybrid", "opencv"}:
             stage = perf_counter()
             try:
                 opencv = self.opencv_detector.detect(decoded)
@@ -76,7 +96,7 @@ class CnieRectifier:
                     rejection_codes=["CLASSICAL_DETECTOR_ERROR"],
                 )
             timings["opencv_detector"] = (perf_counter() - stage) * 1000
-        if self.detector_mode in {"hybrid", "docquadnet"}:
+        if manual_quad is None and self.detector_mode in {"hybrid", "docquadnet"}:
             stage = perf_counter()
             try:
                 docquad = self.docquad_detector.detect(decoded)
@@ -96,7 +116,10 @@ class CnieRectifier:
         iou: float | None = None
         distance_ratio: float | None = None
 
-        if self.detector_mode == "opencv":
+        if manual_quad is not None:
+            accepted, detector_used = manual_quad, DetectorKind.MANUAL
+            warnings.append("MANUAL_CORNERS")
+        elif self.detector_mode == "opencv":
             if opencv.valid:
                 accepted, detector_used = opencv.corners, DetectorKind.OPENCV
             else:
@@ -173,6 +196,7 @@ class CnieRectifier:
             accepted = order_quad(accepted)
             stage = perf_counter()
             quality.update(capture_quality(decoded, accepted, self.config))
+            quality["manual_corners"] = manual_quad is not None
             rejected.extend(rejection_codes(quality, self.config))
             timings["quality_validation"] = (perf_counter() - stage) * 1000
             rejected = list(dict.fromkeys(rejected))
@@ -192,6 +216,10 @@ class CnieRectifier:
                     if float(warp_metrics["black_border_ratio"]) > self.config.max_black_border_ratio:
                         rejected.append("MATERIAL_BLACK_BORDER")
                     if not rejected:
+                        stage = perf_counter()
+                        rectified, enhancement_metrics = enhance_card(rectified)
+                        quality["enhancement"] = enhancement_metrics
+                        timings["image_enhancement"] = (perf_counter() - stage) * 1000
                         stage = perf_counter()
                         rectified_bytes = encode_jpeg(rectified, self.config.jpeg_quality)
                         timings["jpeg_encode"] = (perf_counter() - stage) * 1000

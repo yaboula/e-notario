@@ -31,7 +31,7 @@ class DataProtector(Protocol):
 class DpapiWorkspaceProtector:
     def protect(self, value: bytes) -> bytes:
         return protect_current_user(value, entropy=DPAPI_ENTROPY,
-                                    description="e-notario temporary workspace key")
+                                    description="Valiris Desk temporary workspace key")
 
     def unprotect(self, value: bytes) -> bytes:
         return unprotect_current_user(value, entropy=DPAPI_ENTROPY)

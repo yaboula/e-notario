@@ -164,14 +164,9 @@ def boundary_edge_evidence(
         work = image_bgr
     work_quad = order_quad(quad) * scale
     gray = cv2.cvtColor(work, cv2.COLOR_BGR2GRAY)
-    lab = cv2.cvtColor(work, cv2.COLOR_BGR2LAB)
     blurred_gray = cv2.GaussianBlur(gray, (5, 5), 0)
     gray_edges = cv2.Canny(blurred_gray, 25, 100, L2gradient=True)
-    edge_maps = [gray_edges]
-    for channel in (1, 2):
-        chroma = cv2.GaussianBlur(lab[:, :, channel], (5, 5), 0)
-        edge_maps.append(cv2.Canny(chroma, 8, 28, L2gradient=True))
-    color_edges = np.maximum.reduce(edge_maps)
+    color_edges = np.maximum(gray_edges, document_edges(work))
     side_support = _edge_support_by_side(color_edges, work_quad, radius=4)
     return {
         "grayscale_edge_support": _sample_edge_support(gray_edges, work_quad, radius=4),
@@ -180,6 +175,23 @@ def boundary_edge_evidence(
         "boundary_supported_sides": int(sum(value >= side_threshold for value in side_support)),
         "boundary_analysis_scale": scale,
     }
+
+
+def document_edges(image_bgr: np.ndarray) -> np.ndarray:
+    """Combine luminance and chroma boundaries without enhancing the source image."""
+    lab = cv2.cvtColor(image_bgr, cv2.COLOR_BGR2LAB)
+    edges = cv2.Canny(cv2.GaussianBlur(lab[:, :, 0], (5, 5), 0), 35, 110, L2gradient=True)
+    for channel in (1, 2):
+        chroma = cv2.GaussianBlur(lab[:, :, channel], (5, 5), 0)
+        low, high = np.percentile(chroma, [2, 98])
+        span = float(high - low)
+        if span >= 8:
+            # Chroma contracts in underexposed images. Restore a bounded amount
+            # of detector contrast; never amplify near-neutral sensor noise.
+            gain = min(2.0, max(1.0, 64.0 / span))
+            chroma = np.clip((chroma.astype(np.float32) - 128) * gain + 128, 0, 255).astype(np.uint8)
+        edges = cv2.bitwise_or(edges, cv2.Canny(chroma, 8, 28, L2gradient=True))
+    return edges
 
 
 def refine_quad_with_edges(
@@ -196,9 +208,7 @@ def refine_quad_with_edges(
         )
     else:
         work = image_bgr
-    gray = cv2.cvtColor(work, cv2.COLOR_BGR2GRAY)
-    gray = cv2.GaussianBlur(gray, (5, 5), 0)
-    edges = cv2.Canny(gray, 45, 140, L2gradient=True)
+    edges = document_edges(work)
     ys, xs = np.nonzero(edges)
     pixels = np.column_stack((xs, ys)).astype(np.float32)
     q = order_quad(initial) * scale
@@ -209,11 +219,27 @@ def refine_quad_with_edges(
         if length < 20 or pixels.size == 0:
             return order_quad(initial)
         unit = vector / length
+        # Rounded corners and interior printing must not pull a fitted side inward.
         rel = pixels - a
         along = rel @ unit
-        perpendicular = np.abs(rel[:, 0] * unit[1] - rel[:, 1] * unit[0])
-        band = max(3.0, min(12.0, length * 0.012))
-        selected = pixels[(along >= -band) & (along <= length + band) & (perpendicular <= band)]
+        signed_distance = rel[:, 0] * unit[1] - rel[:, 1] * unit[0]
+        band = max(4.0, min(32.0, length * 0.04))
+        eligible = (along >= length * 0.08) & (along <= length * 0.92) & (np.abs(signed_distance) <= band)
+        selected = pixels[eligible]
+        if len(selected):
+            # A rounded contour can start well inside the true side. Locate the
+            # dominant parallel boundary before fitting, rather than averaging
+            # every edge (including text) in the search strip.
+            offsets = signed_distance[eligible]
+            histogram, bins = np.histogram(offsets, bins=np.arange(-np.ceil(band), np.ceil(band) + 2))
+            smoothed = np.convolve(histogram, np.ones(5), mode="same")
+            peaks = np.flatnonzero(smoothed >= float(smoothed.max()) * 0.8)
+            groups = np.split(peaks, np.flatnonzero(np.diff(peaks) > 1) + 1)
+            # If equally supported parallel edges compete, the exterior one
+            # preserves the card instead of cropping along an internal frame.
+            peak = int(np.median(groups[-1]))
+            offset = float(bins[peak] + 0.5)
+            selected = selected[np.abs(offsets - offset) <= 3.0]
         if len(selected) < max(20, int(length * 0.08)):
             return order_quad(initial)
         vx, vy, x0, y0 = cv2.fitLine(selected, cv2.DIST_HUBER, 0, 0.01, 0.01).reshape(-1)

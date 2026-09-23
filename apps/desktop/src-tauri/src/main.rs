@@ -18,6 +18,7 @@ struct Runtime {
 struct Bootstrap {
     token: String,
     base: String,
+    control_required: bool,
 }
 
 #[derive(serde::Serialize)]
@@ -33,13 +34,14 @@ fn bootstrap(state: tauri::State<Runtime>) -> Bootstrap {
     Bootstrap {
         token: state.token.clone(),
         base: "http://127.0.0.1:8787".into(),
+        control_required: cfg!(feature = "control"),
     }
 }
 
 #[tauri::command]
 async fn export_file(app: tauri::AppHandle, name: String, bytes: Vec<u8>) -> Result<bool, String> {
     if bytes.len() > 25 * 1024 * 1024 || name.contains('/') || name.contains('\\') {
-        return Err("Invalid export".into());
+        return Err("EXPORT_INVALID".into());
     }
     tauri::async_runtime::spawn_blocking(move || {
         let destination = app
@@ -48,15 +50,15 @@ async fn export_file(app: tauri::AppHandle, name: String, bytes: Vec<u8>) -> Res
             .set_file_name(&name)
             .blocking_save_file();
         if let Some(destination) = destination {
-            let path = destination.into_path().map_err(|_| "Invalid destination")?;
-            std::fs::write(path, bytes).map_err(|_| "Could not save the selected file")?;
+            let path = destination.into_path().map_err(|_| "EXPORT_DESTINATION_INVALID")?;
+            std::fs::write(path, bytes).map_err(|_| "EXPORT_WRITE_FAILED")?;
             Ok(true)
         } else {
             Ok(false)
         }
     })
     .await
-    .map_err(|_| "Export failed".to_string())?
+    .map_err(|_| "EXPORT_TASK_FAILED".to_string())?
 }
 
 #[tauri::command]
@@ -73,7 +75,7 @@ async fn save_docx(
         || name.contains('\\')
         || !name.to_ascii_lowercase().ends_with(".docx")
     {
-        return Err("Documento Word no válido".into());
+        return Err("DOCX_INVALID".into());
     }
     let dialog_app = app.clone();
     let saved_path = tauri::async_runtime::spawn_blocking(
@@ -86,32 +88,32 @@ async fn save_docx(
             let Some(destination) = destination else {
                 return Ok(None);
             };
-            let path = destination.into_path().map_err(|_| "Destino no válido")?;
+            let path = destination.into_path().map_err(|_| "DOCX_DESTINATION_INVALID")?;
             if path
                 .extension()
                 .and_then(|value| value.to_str())
                 .map(|value| value.eq_ignore_ascii_case("docx"))
                 != Some(true)
             {
-                return Err("El archivo debe conservar la extensión .docx".into());
+                return Err("DOCX_EXTENSION_REQUIRED".into());
             }
-            let parent = path.parent().ok_or("Destino no válido")?;
+            let parent = path.parent().ok_or("DOCX_DESTINATION_INVALID")?;
             let mut temporary = tempfile::NamedTempFile::new_in(parent)
-                .map_err(|_| "No se pudo preparar el guardado")?;
+                .map_err(|_| "DOCX_PREPARE_FAILED")?;
             temporary
                 .write_all(&bytes)
-                .map_err(|_| "No se pudo escribir el documento")?;
+                .map_err(|_| "DOCX_WRITE_FAILED")?;
             temporary
                 .as_file()
                 .sync_all()
-                .map_err(|_| "No se pudo confirmar el documento")?;
+                .map_err(|_| "DOCX_SYNC_FAILED")?;
             let receipt_id = case_context
                 .as_ref()
                 .map(|context| saved_receipts::prepare(context, &path, &bytes))
                 .transpose()?;
             temporary
                 .persist(&path)
-                .map_err(|_| "No se pudo guardar el archivo seleccionado")?;
+                .map_err(|_| "DOCX_PERSIST_FAILED")?;
             let receipt_confirmed = receipt_id
                 .as_ref()
                 .map(|id| saved_receipts::confirm(id).is_ok())
@@ -120,7 +122,7 @@ async fn save_docx(
         },
     )
     .await
-    .map_err(|_| "Falló el guardado".to_string())??;
+    .map_err(|_| "DOCX_TASK_FAILED".to_string())??;
     let Some((path, receipt_id, receipt_confirmed)) = saved_path else {
         return Ok(SaveDocxResult {
             saved: false,
@@ -167,20 +169,20 @@ async fn clear_case_save_receipts() -> Result<(), String> {
 fn reveal_file(app: tauri::AppHandle, path: String) -> Result<(), String> {
     let path = std::path::PathBuf::from(path);
     if !path.is_file() {
-        return Err("El archivo guardado ya no está disponible".into());
+        return Err("SAVED_FILE_NOT_FOUND".into());
     }
     app.opener()
         .reveal_item_in_dir(path)
-        .map_err(|_| "No se pudo abrir el Explorador".into())
+        .map_err(|_| "REVEAL_FILE_FAILED".into())
 }
 
 #[tauri::command]
 async fn configure_lan(app: tauri::AppHandle, ip: String) -> Result<(), String> {
     let address: std::net::Ipv4Addr = ip
         .parse()
-        .map_err(|_| "Introduce una dirección IPv4 válida".to_string())?;
+        .map_err(|_| "LAN_IP_INVALID".to_string())?;
     if !address.is_private() || address.is_loopback() || address.is_unspecified() {
-        return Err("La dirección debe ser la IPv4 privada de este PC en la oficina".into());
+        return Err("LAN_IP_NOT_PRIVATE".into());
     }
     let command = if cfg!(debug_assertions) {
         let root = std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("../../..");
@@ -192,7 +194,7 @@ async fn configure_lan(app: tauri::AppHandle, ip: String) -> Result<(), String> 
         let sidecar = app
             .path()
             .resource_dir()
-            .map_err(|_| "No se encontró el motor instalado".to_string())?
+            .map_err(|_| "ENGINE_NOT_FOUND".to_string())?
             .join("sidecar/cnie-capture.exe");
         app.shell()
             .command(sidecar)
@@ -201,14 +203,9 @@ async fn configure_lan(app: tauri::AppHandle, ip: String) -> Result<(), String> 
     let output = command
         .output()
         .await
-        .map_err(|_| "No se pudo crear el certificado de oficina".to_string())?;
+        .map_err(|_| "LAN_CERTIFICATE_FAILED".to_string())?;
     if !output.status.success() {
-        let detail = String::from_utf8_lossy(&output.stderr).trim().to_string();
-        return Err(if detail.is_empty() {
-            "No se pudo guardar la configuración de red".into()
-        } else {
-            detail
-        });
+        return Err("LAN_CONFIGURATION_FAILED".into());
     }
     Ok(())
 }
@@ -241,7 +238,22 @@ fn main() {
                 let sidecar = app.path().resource_dir()?.join("sidecar/cnie-capture.exe");
                 app.shell().command(sidecar).args(["serve"])
             };
-            let (_, process) = command.env("CNIE_DESKTOP_TOKEN", &token).spawn()?;
+            let command = command.env("CNIE_DESKTOP_TOKEN", &token);
+            #[cfg(feature = "control")]
+            let command = {
+                let public_keys = option_env!("ENOTARIO_CONTROL_LEASE_PUBLIC_KEYS")
+                    .map(str::to_owned)
+                    .or_else(|| {
+                        option_env!("ENOTARIO_CONTROL_LEASE_KEY_ID").zip(
+                            option_env!("ENOTARIO_CONTROL_LEASE_PUBLIC_KEY"),
+                        ).map(|(key_id, public_key)| format!("{key_id}={public_key}"))
+                    })
+                    .ok_or_else(|| std::io::Error::other(
+                        "Control lease public keys were not embedded"))?;
+                command.env("CNIE_CONTROL_MODE", "required")
+                    .env("CNIE_CONTROL_LEASE_PUBLIC_KEYS", public_keys)
+            };
+            let (_, process) = command.spawn()?;
             app.manage(Runtime {
                 token,
                 process: Mutex::new(Some(process)),
@@ -261,7 +273,7 @@ fn main() {
             restart_app
         ])
         .build(tauri::generate_context!())
-        .expect("Could not launch e-notario");
+        .expect("Could not launch Valiris Desk");
     app.run(|handle, event| {
         if let tauri::RunEvent::Exit = event {
             if let Some(state) = handle.try_state::<Runtime>() {

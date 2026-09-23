@@ -1,5 +1,6 @@
 import {useCallback, useEffect, useRef, useState, type Dispatch, type SetStateAction} from 'react';
 import {ApiError, type CaptureApi, type CaseDraft, type CaseFieldLease, type TemplateFieldDefinition} from '@notario/api-client';
+import {useUiLocale} from './locale';
 
 type Value = string | string[] | null;
 interface Options {
@@ -16,6 +17,7 @@ const read=(draft:CaseDraft,key:string):Value=>key.startsWith('role.')
 
 /** One collaboration implementation for desktop and mobile, with no browser persistence. */
 export function useCaseCollaboration({api,draft,setDraft,onChanged,onError,fields:definitions=[]}:Options) {
+  const {locale}=useUiLocale();
   const current=useRef(draft);
   current.current=draft;
   const lifecycle=useRef(0);
@@ -273,7 +275,7 @@ export function useCaseCollaboration({api,draft,setDraft,onChanged,onError,field
     const foreign=leases.find(item=>item.field_key===key&&!item.owned_by_me);
     return {
       disabled:draft?.status!=='editing'||Boolean(foreign),
-      title:foreign?`Edición en curso: ${foreign.actor_label}`:undefined,
+      title:foreign?`${locale==='ar'?'جارٍ التحرير بواسطة':'Modification en cours par'} : ${foreign.actor_label}`:undefined,
       onFocus:()=>focus(key),onBlur:()=>blur(key),
     };
   };

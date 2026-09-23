@@ -98,7 +98,7 @@ def rejection_codes(metrics: dict[str, object], config: object) -> list[str]:
         float(metrics["color_edge_support"]) < config.min_color_edge_support
         or int(metrics["boundary_supported_sides"]) < config.min_boundary_supported_sides
     )
-    if float(metrics["edge_support"]) < config.min_edge_support and color_boundary_is_weak:
+    if not metrics.get("manual_corners") and float(metrics["edge_support"]) < config.min_edge_support and color_boundary_is_weak:
         codes.append("INSUFFICIENT_EDGE_SUPPORT")
     if float(metrics["glare_ratio"]) > config.max_glare_ratio:
         codes.append("EXCESSIVE_GLARE")

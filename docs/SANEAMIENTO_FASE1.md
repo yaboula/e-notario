@@ -2,6 +2,8 @@
 
 Fecha: 18 de septiembre de 2026. Base de trabajo: `0.8.0-alpha.3`, API 2, Python `0.8.0a3`. Este documento actualiza el traspaso original alpha.2 y distingue correcciones comprobadas de validaciones todavía pendientes.
 
+Actualización posterior del escáner: alpha.4. Durante esta revisión se encontraron constantes `UI_VERSION` alpha.2 en ambas interfaces, pese a los metadatos alpha.3 del paquete. Se corrigieron tomando la versión directamente del `package.json`; la evidencia anterior de salud del motor no acreditaba este arranque de interfaz. Véanse [cambios de captura](CAPTURE_PROTOCOL.md#captura-asistida-y-corrección-de-bordes--alpha4) y [actualizaciones](UPDATES.md). Alpha.3 permanece como checkpoint histórico en el tag `v0.8.0-alpha.3`.
+
 ## Correcciones realizadas
 
 | Pendiente | Estado y comportamiento actual |

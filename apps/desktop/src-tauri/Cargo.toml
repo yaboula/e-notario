@@ -1,7 +1,10 @@
 [package]
-name = "e-notario"
-version = "0.8.0-alpha.3"
+name = "valiris-desk"
+version = "0.8.0-alpha.4"
 edition = "2021"
+
+[features]
+control = []
 
 [build-dependencies]
 tauri-build = { version = "2", features = [] }

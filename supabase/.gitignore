@@ -1,0 +1,9 @@
+# Supabase CLI state and linked project metadata.
+.branches
+.temp
+
+# Local secrets must never be versioned.
+.env
+.env.*
+!.env.example
+.env.keys

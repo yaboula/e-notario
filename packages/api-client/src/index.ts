@@ -1,4 +1,6 @@
 export type CaptureSide = 'front' | 'back';
+export type CardCorners = [number, number][];
+export interface CapturePreview {dimensions:[number,number];corners:CardCorners|null;guidance:'searching'|'closer'|'margin'|'lighting'|'ready'}
 export type CardModel = 'CNIE_MA_2020' | 'CNIE_MA_LEGACY';
 export type OcrState = 'not_started' | 'queued' | 'processing' | 'success' | 'no_text' | 'error' | 'cancelled';
 export interface OcrSummary {
@@ -54,8 +56,8 @@ export interface Rectification {
   timings_ms: Record<string, number>;
   warnings: string[];
   rejection_codes: string[];
-  opencv: {valid: boolean; score: number | null};
-  docquadnet: {valid: boolean; score: number | null};
+  opencv: {valid: boolean; score: number | null; corners?: CardCorners | null};
+  docquadnet: {valid: boolean; score: number | null; corners?: CardCorners | null};
 }
 export interface Capture {
   id: string; document_id: string; side: CaptureSide; created_at: string; attempt: number; active: boolean;
@@ -90,7 +92,7 @@ export interface ProfessionalProfile {
   id:string;display_name_ar:string;display_name_fr:string;function_fr:string;active:boolean;revision:number;
   created_at:string;updated_at:string;in_use:boolean;usage_count:number;
 }
-export interface TemplateRole {key:string;label_es:string;label_fr?:string;label_ar:string;minimum:number;maximum:number;repeatable:boolean}
+export interface TemplateRole {key:string;label_es:string;label_fr:string;label_ar:string;minimum:number;maximum:number;repeatable:boolean}
 export interface TemplateFieldDefinition {
   key:string;label_fr:string;label_ar:string;type:'text'|'arabic_text'|'date'|'number'|'amount'|'professional_profile';
   required:boolean;direction:'ltr'|'rtl'|'auto';repeatable:boolean;maximum_items:number;maximum_characters:number;
@@ -98,7 +100,7 @@ export interface TemplateFieldDefinition {
 }
 export interface TemplateSummary {
   schema_version:'enotario.document-template/v1'|'enotario.document-template/v2';id:string;version:string;slug:string;title_es:string;
-  title_fr?:string;title_ar:string;description_es:string;description_fr?:string;language:string;roles:TemplateRole[];
+  title_fr:string;title_ar:string;description_es:string;description_fr:string;language:string;roles:TemplateRole[];
   fields?:TemplateFieldDefinition[];
 }
 export interface ApprovedIdentitySummary {
@@ -131,6 +133,7 @@ export class CaptureApi {
     return response.json() as Promise<T>;
   }
   workspace() {return this.request<Workspace>('/workspace')}
+  capturePreview(file:Blob,signal?:AbortSignal) {return this.request<CapturePreview>('/capture-preview',{method:'POST',headers:{'Content-Type':file.type},body:file,signal})}
   health() {return this.request<ServiceHealth>('/health')}
   async waitUntilCompatible(uiVersion:string,apiVersion:number,timeoutMs=30000) {
     const deadline=Date.now()+timeoutMs;
@@ -167,7 +170,7 @@ export class CaptureApi {
     const response=await fetch(`${this.base}/api/cases/${id}/generate`,{method:'POST',cache:'no-store',headers:{Authorization:`Bearer ${this.token}`,'Content-Type':'application/json'},body:JSON.stringify({revision,confirm_incomplete:confirmIncomplete})});
     if(!response.ok){const error=await response.json().catch(()=>({}));const detail=error.detail;if(detail&&typeof detail==='object'&&typeof detail.code==='string')throw new ApiError(response.status,detail.code,detail);throw new ApiError(response.status,typeof detail==='string'?detail:'DOCUMENT_GENERATION_FAILED')}
     const disposition=response.headers.get('Content-Disposition')||'';
-    const name=/filename="([^"]+)"/.exec(disposition)?.[1]||`documento-${new Date().toISOString().replace(/[-:T]/g,'').slice(0,15)}.docx`;
+    const name=/filename="([^"]+)"/.exec(disposition)?.[1]||`document-${new Date().toISOString().replace(/[-:T]/g,'').slice(0,15)}.docx`;
     return {blob:await response.blob(),name,revision:Number(response.headers.get('X-eNotario-Case-Revision')||revision)};
   }
   completeCase(id:string,revision:number) {return this.request<CaseDraft>(`/cases/${id}/complete`,{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({revision})})}
@@ -181,10 +184,10 @@ export class CaptureApi {
   template(id:string,version:string) {return this.request<TemplateSummary>(`/document-templates/${encodeURIComponent(id)}?version=${encodeURIComponent(version)}`)}
   pairing() {return this.request<Pairing>('/pairing', {method: 'POST'})}
   disconnect() {return this.request('/pairing', {method: 'DELETE'})}
-  pair(code:string,operatorName='Opérateur mobile',deviceName='Appareil mobile') {return this.request<{token:string;expires_at:number;actor_label:string}>('/pair',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({code,operator_name:operatorName,device_name:deviceName})})}
-  upload(file: Blob, side: CaptureSide, key = crypto.randomUUID(), documentId?: string, cardModel: CardModel = 'CNIE_MA_2020') {
+  pair(code:string,operatorName='Opérateur mobile',deviceName='Appareil mobile',account?:{email:string;password:string}) {return this.request<{token:string;expires_at:number;actor_label:string}>('/pair',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({code,operator_name:operatorName,device_name:deviceName,...account})})}
+  upload(file: Blob, side: CaptureSide, key = crypto.randomUUID(), documentId?: string, cardModel: CardModel = 'CNIE_MA_2020', corners?: CardCorners) {
     const query = new URLSearchParams({side,card_model:cardModel}); if (documentId) query.set('document_id', documentId);
-    return this.request<Capture>(`/captures?${query}`, {method: 'POST', headers: {'Content-Type': file.type, 'Idempotency-Key': key}, body: file});
+    return this.request<Capture>(`/captures?${query}`, {method: 'POST', headers: {'Content-Type': file.type, 'Idempotency-Key': key,...(corners?{'X-Document-Corners':JSON.stringify({corners})}:{})}, body: file});
   }
   review(id: string, decision: 'accepted' | 'retake') {return this.request<Capture>(`/captures/${id}/review`, {method: 'POST', headers: {'Content-Type': 'application/json'}, body: JSON.stringify({decision})})}
   delete(id: string) {return this.request(`/captures/${id}`, {method: 'DELETE'})}
@@ -208,7 +211,7 @@ export class CaptureApi {
     const response=await fetch(`${this.base}/api/document-generation-requests/${id}/generate`,{method:'POST',cache:'no-store',headers:{Authorization:`Bearer ${this.token}`,...(revision!==undefined?{'Content-Type':'application/json'}:{})},...(revision!==undefined?{body:JSON.stringify({revision})}:{})});
     if(!response.ok){const error=await response.json().catch(()=>({}));throw new ApiError(response.status,typeof error.detail==='string'?error.detail:'DOCUMENT_GENERATION_FAILED')}
     const disposition=response.headers.get('Content-Disposition')||'';
-    const name=/filename="([^"]+)"/.exec(disposition)?.[1]||`documento-${new Date().toISOString().replace(/[-:T]/g,'').slice(0,15)}.docx`;
+    const name=/filename="([^"]+)"/.exec(disposition)?.[1]||`document-${new Date().toISOString().replace(/[-:T]/g,'').slice(0,15)}.docx`;
     const rawRevision=response.headers.get('X-eNotario-Document-Request-Revision');
     const generatedRevision=rawRevision===null?NaN:Number(rawRevision);
     if(!Number.isSafeInteger(generatedRevision)||generatedRevision<0||(revision!==undefined&&generatedRevision!==revision))throw new ApiError(409,'DOCUMENT_REQUEST_STALE_REVISION');
@@ -246,99 +249,4 @@ export class CaptureApi {
     return () => {stopped = true; clearTimeout(retry); clearInterval(heartbeat); socket?.close()};
   }
 }
-export const instructions: Record<string, string> = {
-  SESSION_EXPIRED: 'La sesión ha caducado. Vuelve a conectar el dispositivo.',
-  AUTH_REQUIRED: 'Abre esta ventana desde el lanzador de e-notario.',
-  SERVICE_VERSION_MISMATCH: 'La interfaz y el motor pertenecen a versiones diferentes. Instala la misma versión completa.',
-  SERVICE_STARTUP_TIMEOUT: 'El motor local no inició a tiempo. Cierra e-notario y comprueba la instalación.',
-  PAIRING_EXPIRED: 'Este QR ya se utilizó o ha caducado. Genera otro desde el PC.',
-  PAIRING_ACTOR_REQUIRED: 'Indica el nombre temporal del operador y del dispositivo.',
-  LAN_HTTPS_NOT_CONFIGURED: 'Configura la conexión HTTPS de oficina para conectar un móvil.',
-  PROCESSOR_BUSY: 'Hay una captura en proceso. Espera unos segundos y vuelve a enviar.',
-  IMAGE_TOO_LARGE: 'La fotografía supera el límite disponible. Usa JPEG de hasta 20 MB o elimina capturas.',
-  JPEG_OR_PNG_REQUIRED: 'Usa una imagen JPEG o PNG. HEIC todavía no está admitido.',
-  CAPTURE_LIMIT_DELETE_FIRST: 'La sesión está llena. Exporta y elimina capturas antes de continuar.',
-  NO_DOCUMENT_QUADRILATERAL: 'Coloca la tarjeta completa sobre un fondo mate y contrastante.',
-  INSUFFICIENT_CARD_RESOLUTION: 'Acerca la cámara y usa una fotografía de mayor resolución.',
-  CARD_TOO_SMALL_IN_FRAME: 'Acerca la cámara: la tarjeta debe ocupar más espacio.',
-  CARD_TOO_CLOSE_TO_FRAME: 'Aleja ligeramente la cámara y deja margen alrededor.',
-  CORNERS_TOO_CLOSE_TO_IMAGE_BORDER: 'Deja visibles las cuatro esquinas, con margen alrededor.',
-  INSUFFICIENT_EDGE_SUPPORT: 'Mejora la iluminación y el contraste del fondo.',
-  WEAK_CORNER_EVIDENCE: 'Deja las cuatro esquinas completamente visibles y acerca ligeramente la cámara.',
-  AMBIGUOUS_CORNER_EVIDENCE: 'Retira otros objetos rectangulares y deja una sola tarjeta en el encuadre.',
-  MODEL_MASK_DISAGREEMENT: 'Usa un fondo uniforme y comprueba que ningún objeto toque o solape la tarjeta.',
-  DETECTOR_DISAGREEMENT: 'Repite la fotografía con la tarjeta más frontal y el fondo despejado.',
-  EXCESSIVE_GLARE: 'Evita reflejos. Desactiva el flash y cambia ligeramente el ángulo.',
-  IMAGE_TOO_DARK: 'Añade luz difusa sobre la tarjeta.', IMAGE_TOO_BRIGHT: 'Reduce la luz directa sobre la tarjeta.',
-  MODEL_UNAVAILABLE: 'El motor necesita atención en el PC. Contacta con el responsable.',
-  PROCESSING_FAILED: 'No se pudo procesar la fotografía. Reintenta o contacta con el responsable.',
-  IMAGE_DECODE_FAILED: 'El archivo no se puede leer. Vuelve a tomar la fotografía.',
-  OCR_NOT_CONFIGURED: 'Importa una credencial de Google Vision desde Diagnóstico antes de reintentar.',
-  OCR_CREDENTIAL_INVALID: 'La credencial no es una cuenta de servicio válida de Google.',
-  OCR_AUTH_FAILED: 'Google rechazó la autenticación. Sustituye la credencial.',
-  OCR_PERMISSION_DENIED: 'La cuenta no tiene permiso para Vision API en la región UE.',
-  OCR_QUOTA_EXCEEDED: 'La cuota configurada en Google Cloud se ha agotado.',
-  OCR_LOCAL_LIMIT_REACHED: 'Se alcanzó el límite local diario o mensual. Contacta con TI.',
-  OCR_USAGE_READ_FAILED: 'No se puede verificar el consumo OCR. Contacta con TI para recuperar el contador; no lo reinicies a cero.',
-  OCR_USAGE_WRITE_FAILED: 'No se pudo guardar el consumo OCR. Comprueba el almacenamiento y reintenta; no se ha enviado la imagen.',
-  CARD_TOO_BLURRY: 'La tarjeta está desenfocada. Estabiliza la cámara, enfoca el texto y repite la captura.',
-  OCR_RATE_LIMITED: 'Google está limitando temporalmente las solicitudes. Reintenta manualmente más tarde.',
-  OCR_TIMEOUT: 'Google Vision no respondió a tiempo. Puedes reintentar el OCR.',
-  OCR_PROVIDER_UNAVAILABLE: 'Google Vision no está disponible temporalmente. Puedes reintentar el OCR.',
-  OCR_INVALID_RESPONSE: 'Google devolvió una respuesta no válida. Contacta con el responsable.',
-  OCR_NO_TEXT: 'No se detectó texto. Revisa la imagen y repite la captura si es necesario.',
-  OCR_MAX_ATTEMPTS_REACHED: 'Se alcanzaron los tres intentos permitidos para esta captura.',
-  OCR_RETRY_NOT_ALLOWED: 'El OCR no se puede reintentar en el estado actual.',
-  TEMPORARY_STORAGE_WRITE_FAILED: 'No se pudo proteger y guardar la sesión en disco. No cierres la aplicación; comprueba el almacenamiento y reintenta la operación.',
-  EXTRACTION_RESULT_NOT_AVAILABLE: 'Los datos estarán disponibles cuando termine el OCR de ambas caras.',
-  EXTRACTION_UNSUPPORTED_LAYOUT: 'No se pudo reconocer de forma segura el modelo de CNIE. Revisa ambas caras o repite la captura.',
-  EXTRACTION_CARD_MODEL_MISMATCH: 'El modelo detectado no coincide con el elegido. Comprueba ambas caras y comienza una CNIE nueva con el modelo correcto.',
-  DOCUMENT_CARD_MODEL_LOCKED: 'El modelo de esta CNIE ya está fijado. Para cambiarlo, comienza una CNIE nueva.',
-  CASE_STALE_REVISION: 'El expediente cambió en otro dispositivo. Recarga los datos antes de continuar.',
-  CASE_NOT_EDITABLE: 'El expediente está en revisión final y no admite cambios.',
-  CASE_FIELD_LOCKED: 'Este campo está siendo editado en el otro dispositivo. Se habilitará al terminar o al caducar el bloqueo.',
-  CASE_ASSIGNMENT_CONTEXT_CHANGED: 'Las personas asignadas han cambiado. Se ha recargado el expediente; revisa los datos asociados y vuelve a guardar.',
-  CASE_FIELD_LEASE_EXPIRED: 'El turno de edición de este campo ha caducado. Vuelve a seleccionarlo para continuar.',
-  CASE_FIELD_LEASE_INVALID: 'El campo pertenece ahora a otra sesión de edición. Recarga el expediente.',
-  CASE_EDITORS_ACTIVE: 'Hay campos en edición. Guarda y termina la edición antes de abrir la revisión final.',
-  CASE_FIELDS_REQUIRE_COMPLETE_MODE: 'Los campos jurídicos solo se guardan en el modo de relleno completo.',
-  CASE_LIMIT: 'Se alcanzó el límite de expedientes temporales. Finaliza o elimina uno antes de continuar.',
-  CASE_STORAGE_DECRYPT_FAILED: 'No se pudo abrir el expediente cifrado. Contacta con el responsable antes de crear más trabajo.',
-  CASE_INCOMPLETE: 'Faltan campos jurídicos. Revisa la lista y confirma expresamente si quieres generar el Word incompleto.',
-  CASE_NOT_IN_FINAL_REVIEW: 'Abre la revisión final del expediente antes de generar el documento.',
-  PROFESSIONAL_PROFILE_INVALID: 'Selecciona un perfil activo o escribe directamente el nombre profesional.',
-  PROFILE_STALE_REVISION: 'El perfil profesional cambió. Recarga antes de guardar.',
-  PROFILE_IN_USE: 'Este perfil se utiliza en un expediente conservado. Sustitúyelo allí o elimina el expediente antes de desactivarlo o borrarlo.',
-  PROFILE_DELETE_REQUIRES_INACTIVE: 'Desactiva el perfil antes de eliminarlo definitivamente.',
-  PROFILE_STORAGE_WRITE_FAILED: 'No se pudo guardar el catálogo profesional de forma segura. No se aplicó ningún cambio.',
-  PROFILE_INVALID: 'Revisa los datos del perfil profesional.',
-  PROFILE_LIMIT: 'Se alcanzó el límite de 64 perfiles profesionales.',
-  EXTRACTION_MIXED_LAYOUT: 'Las dos caras parecen corresponder a modelos de CNIE diferentes. Comprueba que pertenecen a la misma tarjeta.',
-  EXTRACTION_SIDE_MISMATCH: 'El anverso y el reverso no parecen pertenecer a la misma CNIE.',
-  EXTRACTION_REQUIRED_FIELD_MISSING: 'Falta un campo obligatorio. Corrígelo desde la imagen o repite la captura.',
-  EXTRACTION_LOW_CONFIDENCE: 'Revisa cuidadosamente este campo antes de confirmarlo.',
-  EXTRACTION_DATA_CONFLICT: 'Hay datos incompatibles o con un formato no válido.',
-  EXTRACTION_REVIEW_INCOMPLETE: 'Confirma o corrige todos los campos obligatorios antes de aprobar.',
-  EXTRACTION_STALE_REVISION: 'La captura cambió durante la revisión. Vuelve a cargar los datos.',
-  EXTRACTION_FAILED: 'No se pudieron estructurar los datos. Revisa el diagnóstico o repite la captura.',
-  APPROVED_IDENTITY_LIMIT: 'Se alcanzó el límite de 64 identidades temporales. Genera o elimina solicitudes y espera a que caduquen las que ya no uses.',
-  APPROVED_IDENTITY_REQUIRED: 'Primero aprueba todos los datos de esta identidad.',
-  APPROVED_IDENTITY_EXPIRED: 'Una identidad asignada ha caducado o fue sustituida. Revisa la solicitud.',
-  APPROVED_IDENTITY_FORBIDDEN: 'El móvil solo puede utilizar identidades de su propia sesión.',
-  DOCUMENT_TEMPLATE_NOT_FOUND: 'La plantilla solicitada no está instalada.',
-  DOCUMENT_TEMPLATE_VERSION_MISMATCH: 'La solicitud está fijada a otra versión de la plantilla.',
-  DOCUMENT_TEMPLATE_INTEGRITY_FAILED: 'La plantilla instalada no supera la verificación de integridad.',
-  DOCUMENT_TEMPLATE_INVALID: 'La plantilla instalada contiene elementos no permitidos.',
-  DOCUMENT_ROLE_INVALID: 'Revisa los roles y la cantidad de identidades asignadas.',
-  DOCUMENT_REQUEST_NOT_FOUND: 'La solicitud ya no existe o no pertenece a esta sesión.',
-  DOCUMENT_REQUEST_LIMIT: 'Se alcanzó el límite de 64 solicitudes temporales.',
-  DOCUMENT_REQUEST_STALE_REVISION: 'La solicitud cambió en otra ventana. Recarga y vuelve a intentarlo.',
-  DOCUMENT_TEMPLATE_VALUE_TOO_LONG: 'Un valor revisado supera el espacio declarado por la plantilla.',
-  DOCUMENT_TEMPLATE_BINDING_MISSING: 'Falta un valor aprobado necesario para esta plantilla.',
-  DOCUMENT_GENERATION_FAILED: 'No se pudo generar el documento Word.',
-};
 export interface OcrUsage {daily_limit:number;monthly_limit:number;used_today:number;used_month:number}
-export function explain(error: unknown): string {
-  if (error instanceof ApiError) return instructions[error.code] || `No se pudo completar la operación (${error.code}).`;
-  return 'No se pudo conectar con el PC. Comprueba la conexión e inténtalo de nuevo.';
-}

@@ -74,7 +74,7 @@ function Assert-InstalledFiles($Manifest) {
         if (-not $target.StartsWith($root,[StringComparison]::OrdinalIgnoreCase)) { throw 'QA_MANIFEST_PATH_INVALID' }
         Assert-Hash $target $file.sha256
     }
-    $registered = Get-ItemProperty -LiteralPath 'HKCU:\Software\Microsoft\Windows\CurrentVersion\Uninstall\e-notario'
+    $registered = Get-ItemProperty -LiteralPath 'HKCU:\Software\Microsoft\Windows\CurrentVersion\Uninstall\Valiris Desk'
     if ($registered.DisplayVersion -ne $Manifest.version -or $registered.InstallLocation.Trim('"') -ne $installDirectory) { throw 'QA_REGISTRATION_MISMATCH' }
 }
 

@@ -1,0 +1,61 @@
+\set ON_ERROR_STOP on
+
+-- Execute with psql after the initial Auth account is confirmed and its
+-- provisional password has been replaced through the portal recovery flow:
+--   psql "$env:SUPABASE_DB_URL" -v admin_email='admin@example.com' -f supabase/bootstrap/first-platform-admin.psql
+--
+-- This script deliberately does not create an Auth user. It only grants the
+-- platform role to one existing, confirmed account selected by exact email.
+
+\if :{?admin_email}
+\else
+  \echo 'ERROR: pass -v admin_email=''admin@example.com'''
+  \quit 2
+\endif
+
+begin;
+
+create temporary table bootstrap_platform_admin_candidate on commit drop as
+select id as user_id, email, email_confirmed_at
+from auth.users
+where lower(email) = lower(btrim(:'admin_email'));
+
+do $bootstrap$
+declare
+  candidate_count integer;
+  candidate_id uuid;
+  candidate_confirmed_at timestamptz;
+begin
+  select count(*) into candidate_count
+  from bootstrap_platform_admin_candidate;
+
+  if candidate_count <> 1 then
+    raise exception 'BOOTSTRAP_ADMIN_ACCOUNT_NOT_FOUND';
+  end if;
+
+  select user_id, email_confirmed_at
+    into candidate_id, candidate_confirmed_at
+  from bootstrap_platform_admin_candidate;
+
+  if candidate_confirmed_at is null then
+    raise exception 'BOOTSTRAP_ADMIN_EMAIL_NOT_CONFIRMED';
+  end if;
+
+  perform 1 from auth.users where id = candidate_id for update;
+  if exists (
+    select 1 from public.control_memberships where user_id = candidate_id
+  ) then
+    raise exception 'BOOTSTRAP_ADMIN_IS_ORGANIZATION_MEMBER';
+  end if;
+
+  insert into public.control_platform_admins (user_id)
+  values (candidate_id)
+  on conflict (user_id) do nothing;
+end;
+$bootstrap$;
+
+select c.user_id, c.email, (a.user_id is not null) as platform_admin
+from bootstrap_platform_admin_candidate c
+join public.control_platform_admins a on a.user_id = c.user_id;
+
+commit;

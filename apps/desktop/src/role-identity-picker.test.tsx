@@ -22,8 +22,8 @@ function Fixture({initial=[]}:{initial?:string[]}) {
 describe('professional role identity picker',()=>{
   it('does not preselect an identity and shows the requirement',()=>{
     render(<Fixture/>);
-    expect(screen.getByRole('group',{name:'Heredero'})).toBeTruthy();
-    expect(within(screen.getByRole('group',{name:'Heredero'})).getByRole('status').textContent).toContain('0/12 seleccionados · Mínimo: 1');
+    expect(screen.getByRole('group',{name:'Héritier'})).toBeTruthy();
+    expect(within(screen.getByRole('group',{name:'Héritier'})).getByRole('status').textContent).toContain('0/12 sélectionnés · Minimum: 1');
     expect(screen.queryByRole('combobox')).toBeNull();
     expect(screen.getAllByRole('checkbox').every(input=>!(input as HTMLInputElement).checked)).toBe(true);
   });
@@ -34,8 +34,8 @@ describe('professional role identity picker',()=>{
     fireEvent.click(screen.getByRole('checkbox',{name:'YAHYÁ ABOULAFIYA · TEST1'}));
     expect(screen.getByTestId('selection').textContent).toBe('identity-3,identity-1');
     expect(screen.getAllByRole('listitem').map(item=>item.textContent)).toEqual([
-      'Person 3 · TEST3Quitar','YAHYÁ ABOULAFIYA · TEST1Quitar']);
-    fireEvent.click(screen.getByRole('button',{name:'Quitar: Person 3 · TEST3'}));
+      'Person 3 · TEST3Retirer','YAHYÁ ABOULAFIYA · TEST1Retirer']);
+    fireEvent.click(screen.getByRole('button',{name:'Retirer: Person 3 · TEST3'}));
     expect(screen.getByTestId('selection').textContent).toBe('identity-1');
   });
 
@@ -54,7 +54,7 @@ describe('professional role identity picker',()=>{
 
   it('searches Latin accents, Arabic diacritics and card numbers without changing the selection',()=>{
     render(<Fixture initial={['identity-3']}/>);
-    const search=screen.getByRole('searchbox',{name:'Buscar identidad'});
+    const search=screen.getByRole('searchbox',{name:'Rechercher une identité'});
     for(const query of ['yahya','يحيى','TEST1']) {
       fireEvent.change(search,{target:{value:query}});
       expect(screen.getByRole('checkbox',{name:'YAHYÁ ABOULAFIYA · TEST1'})).toBeTruthy();
@@ -62,15 +62,15 @@ describe('professional role identity picker',()=>{
     }
     fireEvent.change(search,{target:{value:'absent'}});
     expect(screen.queryByRole('checkbox')).toBeNull();
-    expect(screen.getByText('Sin resultados para esta búsqueda.')).toBeTruthy();
+    expect(screen.getByText('Aucun résultat pour cette recherche.')).toBeTruthy();
   });
 
   it('allows removing an unavailable selection without revealing technical identifiers',()=>{
     const changed=vi.fn();
     render(<RoleIdentityPicker role={role} identities={[]} value={['private-owner-reference']} onChange={changed}/>);
-    expect(screen.getByText('No hay identidades aprobadas disponibles.')).toBeTruthy();
+    expect(screen.getByText('Aucune identité approuvée disponible.')).toBeTruthy();
     expect(screen.queryByText('private-owner-reference')).toBeNull();
-    fireEvent.click(screen.getByRole('button',{name:'Quitar: Identidad no disponible'}));
+    fireEvent.click(screen.getByRole('button',{name:'Retirer: Identité indisponible'}));
     expect(changed).toHaveBeenCalledWith([]);
   });
 
@@ -81,7 +81,7 @@ describe('professional role identity picker',()=>{
     const search=screen.getByRole('searchbox'),checkbox=screen.getByRole('checkbox',{name:'Person 2 · TEST2'});
     search.focus();
     checkbox.focus();
-    screen.getByRole('button',{name:'Quitar: YAHYÁ ABOULAFIYA · TEST1'}).focus();
+    screen.getByRole('button',{name:'Retirer: YAHYÁ ABOULAFIYA · TEST1'}).focus();
     expect(focus).toHaveBeenCalledTimes(1);
     expect(blur).not.toHaveBeenCalled();
     screen.getByRole('button',{name:'Outside'}).focus();
@@ -101,7 +101,7 @@ describe('professional role identity picker',()=>{
     const changed=vi.fn();
     render(<RoleIdentityPicker role={{...role,repeatable:false,maximum:1}} identities={identities}
       value={[]} onChange={changed}/>);
-    fireEvent.change(screen.getByRole('combobox',{name:'Heredero'}),{target:{value:'identity-2'}});
+    fireEvent.change(screen.getByRole('combobox',{name:'Héritier'}),{target:{value:'identity-2'}});
     expect(changed).toHaveBeenCalledWith(['identity-2']);
     expect(screen.queryByRole('checkbox')).toBeNull();
   });

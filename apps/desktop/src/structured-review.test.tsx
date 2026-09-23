@@ -17,15 +17,15 @@ describe('StructuredDataReview',()=>{
     const api={extraction:vi.fn().mockResolvedValue(extraction)} as unknown as CaptureApi;
     const queryClient=new QueryClient({defaultOptions:{queries:{retry:false}}});
     render(<AppTheme><QueryClientProvider client={queryClient}><StructuredDataReview api={api} document={document} captures={[]} onChanged={()=>{}}/></QueryClientProvider></AppTheme>);
-    await screen.findByRole('textbox',{name:/Número nacional \(CIN\)/});
+    await screen.findByRole('textbox',{name:/Numéro national \(CIN\)/});
     expect(screen.getAllByRole('textbox')).toHaveLength(13);
-    expect(screen.getByRole('combobox',{name:/^Sexo/})).toBeTruthy();
-    expect(screen.queryByText('EVIDENCIA SELECCIONADA')).toBeNull();
-    expect(screen.getAllByRole('button',{name:'Confirmar categoría'})).toHaveLength(4);
-    expect(screen.queryByRole('button',{name:'Confirmar'})).toBeNull();
-    expect(screen.getByRole('button',{name:'Aceptar todo y aprobar'}).hasAttribute('disabled')).toBe(false);
-    expect(screen.getByRole('button',{name:'Ver anverso'})).toBeTruthy();
-    expect(screen.getByRole('button',{name:'Ver reverso'})).toBeTruthy();
+    expect(screen.getByRole('combobox',{name:/^Sexe/})).toBeTruthy();
+    expect(screen.queryByText('PREUVE SÉLECTIONNÉE')).toBeNull();
+    expect(screen.getAllByRole('button',{name:'Confirmer la catégorie'})).toHaveLength(4);
+    expect(screen.queryByRole('button',{name:'Confirmer'})).toBeNull();
+    expect(screen.getByRole('button',{name:'Tout accepter et approuver'}).hasAttribute('disabled')).toBe(false);
+    expect(screen.getByRole('button',{name:'Voir le recto'})).toBeTruthy();
+    expect(screen.getByRole('button',{name:'Voir le verso'})).toBeTruthy();
     await waitFor(()=>expect(document.extraction_summary.field_count).toBe(14));
   });
 
@@ -35,11 +35,11 @@ describe('StructuredDataReview',()=>{
     const queryClient=new QueryClient({defaultOptions:{queries:{retry:false}}});
     const view=(item:DocumentSummary)=><AppTheme><QueryClientProvider client={queryClient}><StructuredDataReview api={api} document={item} captures={[]} onChanged={()=>{}}/></QueryClientProvider></AppTheme>;
     const rendered=render(view(document));
-    await screen.findByRole('textbox',{name:/Número nacional \(CIN\)/});
+    await screen.findByRole('textbox',{name:/Numéro national \(CIN\)/});
     const changed={...document,extraction_summary:{...document.extraction_summary,revision:2,reviewed_count:1}};
     rendered.rerender(view(changed));
     await waitFor(()=>expect(api.extraction).toHaveBeenCalledTimes(2));
-    await waitFor(()=>expect(screen.getAllByText('Confirmado').length).toBeGreaterThan(0));
+    await waitFor(()=>expect(screen.getAllByText('Confirmé').length).toBeGreaterThan(0));
   });
 
   it('keeps the document image loaded across parent refreshes',async()=>{
@@ -54,11 +54,11 @@ describe('StructuredDataReview',()=>{
     Object.defineProperty(URL,'createObjectURL',{configurable:true,value:createObjectUrl});
     Object.defineProperty(URL,'revokeObjectURL',{configurable:true,value:revokeObjectUrl});
     const rendered=render(tree(withFront));
-    await screen.findByRole('textbox',{name:/Número nacional \(CIN\)/});
-    fireEvent.click(screen.getByRole('button',{name:'Ver anverso'}));
+    await screen.findByRole('textbox',{name:/Numéro national \(CIN\)/});
+    fireEvent.click(screen.getByRole('button',{name:'Voir le recto'}));
     await waitFor(()=>expect(image).toHaveBeenCalledTimes(1));
     rendered.rerender(tree({...withFront,extraction_summary:{...withFront.extraction_summary,reviewed_count:1}}));
-    await waitFor(()=>expect(screen.getByRole('img',{name:'CNIE · Anverso'})).toBeTruthy());
+    await waitFor(()=>expect(screen.getByRole('img',{name:'CNIE · Recto'})).toBeTruthy());
     expect(image).toHaveBeenCalledTimes(1);
   });
 
@@ -73,11 +73,11 @@ describe('StructuredDataReview',()=>{
     const api={extraction:vi.fn().mockResolvedValue(extraction),reviewExtraction,approveExtraction} as unknown as CaptureApi;
     const queryClient=new QueryClient({defaultOptions:{queries:{retry:false}}});
     render(<AppTheme><QueryClientProvider client={queryClient}><StructuredDataReview api={api} document={document} captures={[]} onChanged={()=>{}}/></QueryClientProvider></AppTheme>);
-    await screen.findByRole('textbox',{name:/Número nacional \(CIN\)/});
-    fireEvent.click(screen.getAllByRole('button',{name:'Confirmar categoría'})[0]);
+    await screen.findByRole('textbox',{name:/Numéro national \(CIN\)/});
+    fireEvent.click(screen.getAllByRole('button',{name:'Confirmer la catégorie'})[0]);
     await waitFor(()=>expect(reviewExtraction).toHaveBeenCalledTimes(1));
     expect(Object.keys(reviewExtraction.mock.calls[0][2])).toEqual(identityKeys);
-    fireEvent.click(screen.getByRole('button',{name:'Aceptar todo y aprobar'}));
+    fireEvent.click(screen.getByRole('button',{name:'Tout accepter et approuver'}));
     await waitFor(()=>expect(approveExtraction).toHaveBeenCalledWith(document.id,3));
     expect(Object.keys(reviewExtraction.mock.calls[1][2])).toHaveLength(14);
   });
@@ -87,8 +87,8 @@ describe('DocumentCenter',()=>{
   it('offers partial fill while keeping full fill inaccessible',()=>{
     const onSelect=vi.fn();
     render(<AppTheme><DocumentModeCard mode={null} onSelect={onSelect}/></AppTheme>);
-    const partial=screen.getByRole('button',{name:/Relleno parcial/});
-    const full=screen.getByRole('button',{name:/Relleno completo/});
+    const partial=screen.getByRole('button',{name:/Remplissage partiel/});
+    const full=screen.getByRole('button',{name:/Remplissage complet/});
     expect(partial.hasAttribute('disabled')).toBe(false);
     expect(full.hasAttribute('disabled')).toBe(false);
     fireEvent.click(partial);
@@ -97,19 +97,19 @@ describe('DocumentCenter',()=>{
     expect(onSelect).toHaveBeenLastCalledWith('complete');
   });
   it('creates a version-pinned marriage request from approved identities',async()=>{
-    const template:TemplateSummary={schema_version:'enotario.document-template/v1',id:'ma.marriage',version:'1.1.0',slug:'matrimonio',title_es:'Acta de matrimonio',title_ar:'زواج',description_es:'Piloto',language:'ar-MA',roles:[{key:'husband',label_es:'Esposo',label_ar:'الزوج',minimum:1,maximum:1,repeatable:false},{key:'wife',label_es:'Esposa',label_ar:'الزوجة',minimum:1,maximum:1,repeatable:false},{key:'wife_father',label_es:'Padre de la esposa',label_ar:'والد الزوجة',minimum:1,maximum:1,repeatable:false}]};
+    const template:TemplateSummary={schema_version:'enotario.document-template/v1',id:'ma.marriage',version:'1.1.0',slug:'matrimonio',title_es:'Acta de matrimonio',title_fr:'Acte de mariage',title_ar:'زواج',description_es:'Piloto',description_fr:'Modèle pilote',language:'ar-MA',roles:[{key:'husband',label_es:'Esposo',label_fr:'Époux',label_ar:'الزوج',minimum:1,maximum:1,repeatable:false},{key:'wife',label_es:'Esposa',label_fr:'Épouse',label_ar:'الزوجة',minimum:1,maximum:1,repeatable:false},{key:'wife_father',label_es:'Padre de la esposa',label_fr:'Père de l’épouse',label_ar:'والد الزوجة',minimum:1,maximum:1,repeatable:false}]};
     const identities:ApprovedIdentitySummary[]=[1,2,3].map(index=>({id:`00000000-0000-0000-0000-00000000000${index}`,document_id:`doc-${index}`,revision:1,source:'desktop',created_at:new Date().toISOString(),expires_at:new Date(Date.now()+60000).toISOString(),images_released:true,display_name_ar:`شخص ${index}`,display_name_latin:`PERSON ${index}`,national_id:`AA00000${index}`}));
     const createDocumentRequest=vi.fn().mockResolvedValue({});
     const api={templates:vi.fn().mockResolvedValue([template]),createDocumentRequest} as unknown as CaptureApi;
     const queryClient=new QueryClient({defaultOptions:{queries:{retry:false}}});
     render(<AppTheme><QueryClientProvider client={queryClient}><DocumentCenter api={api} identities={identities} requests={[]} onChanged={()=>{}} active/></QueryClientProvider></AppTheme>);
-    const husband=await screen.findByRole('combobox',{name:/Esposo/});
-    const wife=await screen.findByRole('combobox',{name:/Esposa/});
-    const wifeFather=await screen.findByRole('combobox',{name:/Padre de la esposa/});
+    const husband=await screen.findByRole('combobox',{name:/Époux/});
+    const wife=await screen.findByRole('combobox',{name:/Épouse/});
+    const wifeFather=await screen.findByRole('combobox',{name:/Père de l’épouse/});
     fireEvent.change(husband,{target:{value:identities[0].id}});
     fireEvent.change(wife,{target:{value:identities[1].id}});
     fireEvent.change(wifeFather,{target:{value:identities[2].id}});
-    fireEvent.click(screen.getByRole('button',{name:'Enviar a bandeja'}));
+    fireEvent.click(screen.getByRole('button',{name:'Envoyer à la file'}));
     await waitFor(()=>expect(createDocumentRequest).toHaveBeenCalledWith('ma.marriage','1.1.0',{husband:[identities[0].id],wife:[identities[1].id],wife_father:[identities[2].id]},expect.any(String)));
   });
 });
@@ -124,8 +124,8 @@ describe('FullCaseCenter',()=>{
     const api={templates:vi.fn().mockResolvedValue([template]),professionalProfiles:vi.fn().mockResolvedValue([]),createCase,case:vi.fn().mockResolvedValue(created),subscribe:vi.fn().mockReturnValue(()=>{}),caseFieldLeases:vi.fn().mockResolvedValue([]),acquireCaseFieldLease,patchCaseField,releaseCaseFieldLease:vi.fn().mockResolvedValue({status:'released'})} as unknown as CaptureApi;
     const queryClient=new QueryClient({defaultOptions:{queries:{retry:false}}});
     render(<AppTheme><QueryClientProvider client={queryClient}><FullCaseCenter api={api} identities={[]} cases={[]} onChanged={()=>{}} active/></QueryClientProvider></AppTheme>);
-    await screen.findByText('Piloto');
-    fireEvent.click(screen.getByRole('button',{name:'Crear expediente temporal'}));
+    await screen.findByText('Acte complet');
+    fireEvent.click(screen.getByRole('button',{name:'Créer un dossier temporaire'}));
     await waitFor(()=>expect(createCase).toHaveBeenCalledWith('ma.marriage','1.6.0','complete'));
     const date=await screen.findByLabelText(/Date d’enregistrement/);
     fireEvent.focus(date);
@@ -133,6 +133,6 @@ describe('FullCaseCenter',()=>{
     fireEvent.change(date,{target:{value:'2026-09-16'}});
     fireEvent.blur(date);
     await waitFor(()=>expect(patchCaseField).toHaveBeenCalledWith(created.id,'registry_date','2026-09-16','lease-token-long-enough-for-test',expect.any(String)));
-    expect(screen.getByText('Borradores cifrados · conservación máxima 24 h · generación en Windows')).toBeTruthy();
+    expect(screen.getByText('Brouillons chiffrés · conservation maximale 24 h · génération dans Windows')).toBeTruthy();
   });
 });

@@ -1,3 +1,4 @@
+import packageInfo from '../package.json';
 // @vitest-environment jsdom
 import {act,cleanup,fireEvent,render,screen,waitFor} from '@testing-library/react';
 import {afterEach,describe,expect,it,vi} from 'vitest';
@@ -6,7 +7,7 @@ import {ApiError,CaptureApi,type CaseDraft,type CaseFieldLease,type TemplateSumm
 import {App,MobileFullCasePreparation} from './main';
 
 const template:TemplateSummary={schema_version:'enotario.document-template/v2',id:'ma.marriage',version:'1.6.0',slug:'matrimonio',
-  title_es:'Acta de matrimonio',title_ar:'زواج',description_es:'Prueba sintética',language:'ar-MA',roles:[],
+  title_es:'Acta de matrimonio',title_fr:'Acte de mariage',title_ar:'زواج',description_es:'Prueba sintética',description_fr:'Essai synthétique',language:'ar-MA',roles:[],
   fields:[{key:'registry_number',label_fr:'Registre',label_ar:'السجل',type:'text',required:false,direction:'ltr',repeatable:false,maximum_items:1,maximum_characters:30}]};
 const first:CaseDraft={id:'10000000-0000-4000-8000-000000000001',template_id:template.id,template_version:template.version,
   mode:'complete',status:'editing',revision:0,source:'mobile',field_count:1,assignment_count:0,
@@ -33,7 +34,7 @@ describe('Mobile full case recovery and safe transitions',()=>{
     const {api}=fixture();
     const field=await screen.findByLabelText(/Registre/);
     fireEvent.change(field,{target:{value:'UPDATED'}});
-    fireEvent.change(screen.getByLabelText('Abrir un expediente'),{target:{value:second.id}});
+    fireEvent.change(screen.getByLabelText('Ouvrir un dossier'),{target:{value:second.id}});
     await waitFor(()=>expect((screen.getByLabelText(/Registre/) as HTMLInputElement).value).toBe('SECOND'));
     expect(api.patchCaseField).toHaveBeenCalledWith(first.id,'registry_number','UPDATED','synthetic-lease-token',expect.any(String));
     expect(api.releaseCaseFieldLease).toHaveBeenCalledWith(first.id,'registry_number','synthetic-lease-token');
@@ -42,16 +43,16 @@ describe('Mobile full case recovery and safe transitions',()=>{
     const {api}=fixture();
     vi.mocked(api.patchCaseField).mockRejectedValue(new ApiError(503,'TEMPORARY_STORAGE_WRITE_FAILED'));
     fireEvent.change(await screen.findByLabelText(/Registre/),{target:{value:'UNSAVED'}});
-    fireEvent.change(screen.getByLabelText('Abrir un expediente'),{target:{value:second.id}});
-    await screen.findByText(/No se pudo proteger y guardar/i);
+    fireEvent.change(screen.getByLabelText('Ouvrir un dossier'),{target:{value:second.id}});
+    await screen.findByText(/L’opération n’a pas pu être terminée/i);
     expect((screen.getByLabelText(/Registre/) as HTMLInputElement).value).toBe('UNSAVED');
-    expect((screen.getByLabelText('Abrir un expediente') as HTMLSelectElement).value).toBe(first.id);
+    expect((screen.getByLabelText('Ouvrir un dossier') as HTMLSelectElement).value).toBe(first.id);
     expect(screen.getByRole('alert').className).not.toContain('MuiAlert-colorSuccess');
   });
   it('reuses a stable creation key after a lost response',async()=>{
     const {api}=fixture([]);
     vi.mocked(api.createCase).mockRejectedValueOnce(new Error('offline')).mockResolvedValue(first);
-    const create=await screen.findByRole('button',{name:'Crear expediente'});
+    const create=await screen.findByRole('button',{name:'Créer le dossier'});
     fireEvent.click(create);
     await waitFor(()=>expect(create.hasAttribute('disabled')).toBe(false));
     fireEvent.click(create);
@@ -64,7 +65,7 @@ describe('Mobile full case recovery and safe transitions',()=>{
     let finish!:(value:CaseFieldLease)=>void;
     vi.mocked(api.acquireCaseFieldLease).mockImplementationOnce(()=>new Promise(resolve=>{finish=resolve}));
     fireEvent.focus(await screen.findByLabelText(/Registre/));
-    fireEvent.click(screen.getByRole('button',{name:'Volver'}));
+    fireEvent.click(screen.getByRole('button',{name:'Retour'}));
     expect(onClose).not.toHaveBeenCalled();
     await act(async()=>finish({case_id:first.id,field_key:'registry_number',actor_label:'QA',expires_at:Date.now()/1000+45,lease_token:'delayed-token',owned_by_me:true}));
     await waitFor(()=>expect(onClose).toHaveBeenCalledTimes(1));
@@ -72,20 +73,20 @@ describe('Mobile full case recovery and safe transitions',()=>{
   });
   it('shows final-review status and prevents further editing after sending to Windows',async()=>{
     const {api}=fixture([first]);
-    fireEvent.click(await screen.findByRole('button',{name:'Enviar a revisión en Windows'}));
-    await screen.findByText(/El expediente está bloqueado/);
+    fireEvent.click(await screen.findByRole('button',{name:'Envoyer à la révision dans Windows'}));
+    await screen.findByText(/Le dossier est verrouillé/);
     expect(api.beginCaseFinalReview).toHaveBeenCalledWith(first.id,0);
     expect((screen.getByLabelText(/Registre/) as HTMLInputElement).disabled).toBe(true);
-    expect(screen.getByRole('button',{name:'Guardar borrador'}).hasAttribute('disabled')).toBe(true);
-    expect(screen.getByText('Expediente enviado a revisión final en Windows.').closest('[role="alert"]')?.className).toContain('MuiAlert-colorSuccess');
+    expect(screen.getByRole('button',{name:'Enregistrer le brouillon'}).hasAttribute('disabled')).toBe(true);
+    expect(screen.getByText('Dossier envoyé à la révision finale dans Windows.').closest('[role="alert"]')?.className).toContain('MuiAlert-colorSuccess');
   });
 
   it('warns about an incomplete historical role without blocking final review',async()=>{
-    const {api}=fixture([first],[{...template,roles:[{key:'husband',label_es:'Esposo',label_ar:'الزوج',minimum:1,maximum:1,repeatable:false}]}]);
-    await screen.findByText(/Antes de enviar a Windows, completa/);
-    const send=screen.getByRole('button',{name:'Enviar a revisión en Windows'});
+    const {api}=fixture([first],[{...template,roles:[{key:'husband',label_es:'Esposo',label_fr:'Époux',label_ar:'الزوج',minimum:1,maximum:1,repeatable:false}]}]);
+    await screen.findByText(/Avant l’envoi à Windows, complétez/);
+    const send=screen.getByRole('button',{name:'Envoyer à la révision dans Windows'});
     expect(send.hasAttribute('disabled')).toBe(false);
-    expect(screen.getByRole('button',{name:'Guardar borrador'}).hasAttribute('disabled')).toBe(false);
+    expect(screen.getByRole('button',{name:'Enregistrer le brouillon'}).hasAttribute('disabled')).toBe(false);
     fireEvent.click(send);
     await waitFor(()=>expect(api.beginCaseFinalReview).toHaveBeenCalled());
   });
@@ -96,13 +97,13 @@ describe('Mobile full case recovery and safe transitions',()=>{
     const workspace=await api.workspace();
     vi.mocked(api.workspace).mockResolvedValue({...workspace,case_drafts:[]});
     rendered.rerender(view(true));
-    await screen.findByRole('button',{name:'Crear expediente'});
+    await screen.findByRole('button',{name:'Créer le dossier'});
     expect(screen.queryByLabelText(/Registre/)).toBeNull();
   });
 
   it('offers recovery from the main screen even when no approved identity remains',async()=>{
     sessionStorage.setItem('notario.mobile.token','synthetic-session-token');
-    vi.spyOn(CaptureApi.prototype,'health').mockResolvedValue({status:'ok',version:'0.8.0-alpha.2',api_version:2});
+    vi.spyOn(CaptureApi.prototype,'health').mockResolvedValue({status:'ok',version:packageInfo.version,api_version:2});
     vi.spyOn(CaptureApi.prototype,'workspace').mockResolvedValue({approved_identities:[],document_generation_requests:[],case_drafts:[first],documents:[],captures:[],connected_devices:1,processing:false,mobile_url:null,lan_mode:null,retention_minutes:1440});
     vi.spyOn(CaptureApi.prototype,'templates').mockResolvedValue([template]);
     vi.spyOn(CaptureApi.prototype,'professionalProfiles').mockResolvedValue([]);
@@ -110,8 +111,8 @@ describe('Mobile full case recovery and safe transitions',()=>{
     vi.spyOn(CaptureApi.prototype,'caseFieldLeases').mockResolvedValue([]);
     vi.spyOn(CaptureApi.prototype,'subscribe').mockReturnValue(()=>{});
     render(<AppTheme><App/></AppTheme>);
-    fireEvent.click(await screen.findByRole('button',{name:'Abrir mis expedientes'}));
+    fireEvent.click(await screen.findByRole('button',{name:'Ouvrir mes dossiers'}));
     expect(await screen.findByLabelText(/Registre/)).toBeTruthy();
-    expect(screen.queryByRole('button',{name:'Abrir cámara'})).toBeNull();
+    expect(screen.queryByRole('button',{name:'Ouvrir la caméra'})).toBeNull();
   });
 });

@@ -1,5 +1,16 @@
 # Changelog
 
+## 0.8.0-alpha.4 — 2026-09-18
+
+- Adopta **Valiris Desk** como nombre comercial del producto bajo la marca Valiris. Se mantienen los identificadores técnicos históricos y las rutas de datos para no romper contratos, autorizaciones ni instalaciones existentes.
+- Captura una fotografía mediante `ImageCapture` cuando la cámara/navegador lo admite, con fallback al fotograma completo, sin zoom ni recorte previo. Solicita enfoque y exposición continuos cuando están disponibles.
+- Muestra el contorno y consejos de encuadre durante la captura móvil mediante vistas pequeñas procesadas localmente en Windows; no se guardan ni pasan al OCR.
+- Añade ajuste táctil y por teclado de cuatro esquinas antes del envío y recuperación de fotografías rechazadas desde su original protegido. La selección manual conserva geometría, resolución e iluminación; sustituye el intento anterior y mantiene la revisión humana de campos.
+- Combina bordes de luminancia y color con normalización acotada del contraste cromático; refina lados excluyendo esquinas redondeadas y separando bordes paralelos del marco interior.
+- Equilibra iluminación desigual con correcciones de luminancia limitadas a 12 niveles. Conserva el original y mide nitidez antes de la mejora; no incorpora superresolución neuronal.
+- Corrige la compatibilidad de las interfaces: obtienen su versión del paquete, evitando las constantes alpha.2 que bloqueaban un motor alpha.3.
+- API 2 conservada con extensiones aditivas. Resolución mínima y política de desacuerdo entre detectores se conservan; calibración de reflejos/desenfoque y comparación con apps comerciales requieren capturas autorizadas reales.
+
 ## 0.8.0-alpha.3 — Saneamiento de la base local, 2026-09-18
 
 - Recupera la cola OCR y el mantenimiento ante fallos de persistencia con espera progresiva de 1 a 30 segundos; conserva resultados pendientes sin repetir la llamada al proveedor y descarta capturas sustituidas antes de enviar.

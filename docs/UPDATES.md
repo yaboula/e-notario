@@ -2,6 +2,8 @@
 
 Actualización del 18 de septiembre: consultar [Saneamiento de Fase 1](SANEAMIENTO_FASE1.md) para alpha.3, sus correcciones y evidencia vigente. Las evidencias alpha.1/alpha.2 siguientes mantienen su carácter histórico.
 
+La mejora posterior del escáner se entrega en alpha.4: [captura asistida y corrección de bordes](CAPTURE_PROTOCOL.md#captura-asistida-y-corrección-de-bordes--alpha4). También corrige las constantes de interfaz alpha.2 que no correspondían al motor alpha.3; las interfaces obtienen su versión del paquete. Se propone alpha.4 para la prueba física de esta mejora; la instalación del puesto sigue siendo alpha.2 hasta actualizarla con el instalador completo.
+
 ## Estado del puesto al cierre de Fase 1
 
 El 17 de septiembre de 2026 se actualizó el puesto autorizado a `0.8.0-alpha.2` en `D:\e-notario`, conservando configuración OCR, perfiles, red y certificados y comprobando arranque/acceso directo. Después de construir ese setup se ajustó dos veces el formato de fechas por decisión del producto: primero cifras normales y finalmente `AAAA/MM/DD`.

@@ -1,5 +1,7 @@
 # e-notario Fase 1 Documentación integral
 
+Actualización posterior del escáner: `0.8.0-alpha.4`, API 2. Véase [captura asistida y corrección de bordes](CAPTURE_PROTOCOL.md#captura-asistida-y-corrección-de-bordes--alpha4) y [extensiones de API](PHASE1_API.md#extensiones-de-escáner-alpha4-api-2). Alpha.3 queda preservada en el tag `v0.8.0-alpha.3`; la comparación sintética no sustituye pruebas físicas ni corpus real.
+
 ## 1. Estado y propósito
 
 Referencia de trabajo: `0.8.0-alpha.3`, API local 2, 18 de septiembre de 2026. El cierre original corresponde a alpha.2; las correcciones posteriores y la evidencia vigente están en [Saneamiento de Fase 1](SANEAMIENTO_FASE1.md). La Fase 1 queda cerrada por decisión del responsable del producto tras sus pruebas y las correcciones documentales finales. Este cierre acredita el alcance local entregado; no cambia automáticamente la versión alfa a una publicación estable ni certifica requisitos externos todavía no acreditados.

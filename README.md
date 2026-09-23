@@ -1,6 +1,6 @@
-# e-notario v2 · expediente local profesional · 0.8.0-alpha.3
+# Valiris Desk · expediente local profesional · 0.8.0-alpha.4
 
-Base profesional para capturar una CNIE desde Windows o desde un móvil autorizado, revisar sus 14 valores y completar documentos Word formales. La versión 0.8.0-alpha.3 consolida la Fase 1: expediente temporal cifrado, relleno completo de campos jurídicos, perfiles frecuentes o escritos directamente y colaboración PC–móvil por campo. Conserva intactos `cnie.ma.2020/v2` y el piloto `cnie.ma.legacy/v1`.
+Base profesional para capturar una CNIE desde Windows o desde un móvil autorizado, revisar sus 14 valores y completar documentos Word formales. La versión 0.8.0-alpha.4 consolida la Fase 1: expediente temporal cifrado, relleno completo de campos jurídicos, perfiles frecuentes o escritos directamente y colaboración PC–móvil por campo. Conserva intactos `cnie.ma.2020/v2` y el piloto `cnie.ma.legacy/v1`.
 
 Los perfiles de adules, responsables y jueces se administran desde Windows antes o durante la preparación. Pueden corregirse sin romper expedientes existentes; un perfil utilizado no puede desactivarse ni borrarse hasta sustituirlo en todos los expedientes activos. El borrado definitivo exige desactivarlo primero.
 
@@ -48,7 +48,7 @@ La cámara web requiere un contexto HTTPS. La aplicación instalada detecta la I
 .\.venv\Scripts\python.exe -m cnie_capture setup-lan --ip 192.168.1.50
 ```
 
-Después reinicie e-notario. La estación mostrará un QR de un solo uso y caducidad breve. Consulte [la guía de instalación Windows y móvil](docs/WINDOWS_MOBILE_SETUP.md) antes de abrir el puerto de red.
+Después reinicie Valiris Desk. La estación mostrará un QR de un solo uso y caducidad breve. Consulte [la guía de instalación Windows y móvil](docs/WINDOWS_MOBILE_SETUP.md) antes de abrir el puerto de red.
 
 ## Núcleo Python
 
@@ -96,7 +96,7 @@ pnpm build
 
 Las capturas, resultados OCR, campos, correcciones e identidades temporales se conservan cifrados durante un máximo de 24 horas y pueden reanudarse tras reiniciar el motor. «Limpiar sesión» elimina los registros y sus claves de datos; no elimina plantillas, configuración OCR ni perfiles profesionales. Consulte [la arquitectura de Fase 1](docs/PHASE1_ARCHITECTURE.md), [la configuración segura de Google Vision](docs/GOOGLE_VISION_SETUP.md), [el protocolo de captura](docs/CAPTURE_PROTOCOL.md) y [la guía del benchmark](docs/BENCHMARK.md).
 
-Las identidades aprobadas y las solicitudes DOCX también son exclusivamente temporales. Una solicitud desaparece si expira, se sustituye o se elimina cualquiera de sus identidades. El DOCX guardado queda fuera de e-notario: el operador continúa su trabajo directamente en Word y no existe sincronización de retorno.
+Las identidades aprobadas y las solicitudes DOCX también son exclusivamente temporales. Una solicitud desaparece si expira, se sustituye o se elimina cualquiera de sus identidades. El DOCX guardado queda fuera de Valiris Desk: el operador continúa su trabajo directamente en Word y no existe sincronización de retorno.
 
 ## Modelo
 
@@ -106,4 +106,4 @@ Se incluye DocQuadNet-256 FP32 opset 17, fijado al commit upstream `5d08804af3a2
 
 La referencia actual es la [documentación integral de Fase 1](docs/DOCUMENTACION_FASE1.md), con flujos, módulos, CNIE moderna/antigua, almacenamiento, seguridad, Word, instalación, operación, QA y pendientes de publicación. La [API local](docs/PHASE1_API.md) detalla rutas, permisos, revisiones e idempotencia; el [índice documental](docs/README.md) reúne las guías especializadas y referencias históricas.
 
-El cierre funcional de Fase 1 está aceptado por el responsable del producto. La base de trabajo es `0.8.0-alpha.3`, API 2; el saneamiento y sus pendientes externos se registran en [Saneamiento de Fase 1](docs/SANEAMIENTO_FASE1.md). Esto no acredita SaaS desplegado, aprobación jurídica ni firma de producción. La instalación real conserva alpha.2 hasta actualizarla con el nuevo paquete; consulte [actualizaciones](docs/UPDATES.md). La [guía de plantillas DOCX](docs/DOCX_TEMPLATES.md) define creación, validación y versionado.
+El cierre funcional de Fase 1 está aceptado por el responsable del producto. La base de trabajo es `0.8.0-alpha.4`, API 2; el saneamiento y sus pendientes externos se registran en [Saneamiento de Fase 1](docs/SANEAMIENTO_FASE1.md). Esto no acredita SaaS desplegado, aprobación jurídica ni firma de producción. La instalación real conserva alpha.2 hasta actualizarla con el nuevo paquete; consulte [actualizaciones](docs/UPDATES.md). La [guía de plantillas DOCX](docs/DOCX_TEMPLATES.md) define creación, validación y versionado.

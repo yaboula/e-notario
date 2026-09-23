@@ -1,4 +1,8 @@
-# Traspaso a Fase 2 — e-notario SaaS híbrido
+# Traspaso a Fase 2 — Valiris Desk SaaS híbrido
+
+Actualización de marca, 23 de septiembre de 2026: **Valiris** es la marca y **Valiris Desk** el nombre comercial de la aplicación. Las menciones históricas a e-notario y las rutas o identificadores técnicos existentes se conservan cuando describen compatibilidad, instalaciones anteriores o contratos internos.
+
+Actualización posterior del escáner: `0.8.0-alpha.4`, API 2. Véase [captura asistida y corrección de bordes](CAPTURE_PROTOCOL.md#captura-asistida-y-corrección-de-bordes--alpha4) y [extensiones de API](PHASE1_API.md#extensiones-de-escáner-alpha4-api-2). Alpha.3 queda preservada en el tag `v0.8.0-alpha.3`; la comparación sintética no sustituye pruebas físicas ni corpus real.
 
 Fecha de consolidación: 18 de septiembre de 2026. Documento de continuidad entre chats, no autorización para implementar o desplegar toda la Fase 2. Leer primero este dossier y después las referencias indicadas. No asumir que el nuevo chat conserva la conversación anterior.
 

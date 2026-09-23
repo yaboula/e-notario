@@ -1,12 +1,13 @@
 import {useId, useState, type FocusEvent} from 'react';
 import type {ApprovedIdentitySummary, TemplateRole} from '@notario/api-client';
+import {useUiLocale, type UiLocale} from './locale';
 
 interface Props {
   role: TemplateRole;
   identities: ApprovedIdentitySummary[];
   value: string[];
   onChange: (value: string[]) => void;
-  locale?: 'es' | 'fr';
+  locale?: UiLocale;
   disabled?: boolean;
   title?: string;
   onFocus?: () => void;
@@ -14,14 +15,14 @@ interface Props {
 }
 
 const messages = {
-  es: {unassigned: 'Sin asignar', search: 'Buscar identidad', empty: 'No hay identidades aprobadas disponibles.',
-    noMatches: 'Sin resultados para esta búsqueda.', selected: 'seleccionados', minimum: 'Mínimo', maximum: 'Máximo',
-    remove: 'Quitar', unavailable: 'Identidad no disponible', fallback: 'Identidad aprobada',
-    hint: 'Selecciona las personas en el orden en que aparecerán en el documento.'},
   fr: {unassigned: 'Non attribué', search: 'Rechercher une identité', empty: 'Aucune identité approuvée disponible.',
     noMatches: 'Aucun résultat pour cette recherche.', selected: 'sélectionnés', minimum: 'Minimum', maximum: 'Maximum',
     remove: 'Retirer', unavailable: 'Identité indisponible', fallback: 'Identité approuvée',
     hint: 'Sélectionnez les personnes dans leur ordre d’apparition dans le document.'},
+  ar: {unassigned:'غير مسند',search:'البحث عن هوية',empty:'لا توجد هويات معتمدة متاحة.',
+    noMatches:'لا توجد نتائج لهذا البحث.',selected:'محدد',minimum:'الحد الأدنى',maximum:'الحد الأقصى',
+    remove:'إزالة',unavailable:'الهوية غير متاحة',fallback:'هوية معتمدة',
+    hint:'اختر الأشخاص حسب ترتيب ظهورهم في الوثيقة.'},
 };
 
 function searchable(value: string) {
@@ -29,12 +30,14 @@ function searchable(value: string) {
 }
 
 /** Keeps selection order explicit; moving focus inside the picker retains its field lease. */
-export function RoleIdentityPicker({role, identities, value, onChange, locale = 'es', disabled,
+export function RoleIdentityPicker({role, identities, value, onChange, locale:requestedLocale, disabled,
   title, onFocus, onBlur}: Props) {
+  const context=useUiLocale();
+  const locale=requestedLocale??context.locale;
   const id = useId();
   const [search, setSearch] = useState('');
   const text = messages[locale];
-  const label = locale === 'fr' ? role.label_fr || role.label_es : role.label_es;
+  const label = locale === 'ar' ? role.label_ar : role.label_fr;
   const name = (identity: ApprovedIdentitySummary) => identity.display_name_latin || identity.display_name_ar || text.fallback;
   const description = (identity: ApprovedIdentitySummary) => `${name(identity)} · ${identity.national_id}`;
   const index = new Map(identities.map(identity => [identity.id, identity]));

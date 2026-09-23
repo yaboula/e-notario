@@ -15,7 +15,7 @@ from contextlib import asynccontextmanager
 from dataclasses import dataclass, field, replace
 from datetime import datetime, timezone
 from pathlib import Path
-from typing import Any, Literal
+from typing import Annotated, Any, Literal
 from uuid import UUID, uuid4
 
 from fastapi import Depends, FastAPI, HTTPException, Request, WebSocket, WebSocketDisconnect
@@ -23,7 +23,7 @@ from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse, Response
 from fastapi.security import HTTPAuthorizationCredentials, HTTPBearer
 from PIL import Image, ImageDraw
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, Field, ValidationError
 from starlette.concurrency import run_in_threadpool
 from starlette.staticfiles import StaticFiles
 
@@ -36,6 +36,8 @@ from cnie_extract import CnieFieldExtractor, ExtractionResult, ExtractionStatus
 from cnie_extract.domain import ExtractedField, FieldEvidence
 from cnie_extract.normalize import date_iso, identifier, text
 from cnie_rectifier import CnieRectifier
+from cnie_rectifier.preview import preview_capture
+from cnie_rectifier.errors import InvalidImageError
 from cnie_documents import DocumentTemplateCatalog, DocumentTemplateError
 from cnie_cases import (CaseDraft, CaseError, FieldLeaseError, FieldLeaseManager,
                         InMemoryCaseStore)
@@ -44,6 +46,7 @@ from cnie_cases.store import CaseStore
 from cnie_profiles import InMemoryProfileStore, ProfessionalProfile, ProfileError
 from cnie_profiles.store import ProfileStore
 from cnie_capture.workspace_store import EncryptedWorkspaceStore, WorkspaceStoreError, WORKSPACE_SCHEMA
+from cnie_control import GrantError, LocalControlSessions, StationStoreError
 
 MAX_UPLOAD = 20 * 1024 * 1024
 MAX_MEMORY = 160 * 1024 * 1024
@@ -60,10 +63,17 @@ class PairRequest(BaseModel):
     code: str = Field(min_length=20, max_length=128)
     operator_name: str = Field(default="Opérateur mobile", min_length=1, max_length=48)
     device_name: str = Field(default="Appareil mobile", min_length=1, max_length=48)
+    email: str | None = Field(default=None, min_length=3, max_length=254)
+    password: str | None = Field(default=None, min_length=1, max_length=1024)
 
 
 class ReviewRequest(BaseModel):
     decision: Literal["accepted", "retake"]
+
+
+class CornerSelection(BaseModel):
+    corners: list[tuple[Annotated[float, Field(strict=True, ge=0, le=1, allow_inf_nan=False)],
+                        Annotated[float, Field(strict=True, ge=0, le=1, allow_inf_nan=False)]]] = Field(min_length=4, max_length=4)
 
 
 class FieldReviewInput(BaseModel):
@@ -150,6 +160,28 @@ class ProfileUpdateRequest(ProfileCreateRequest):
     active: bool = True
 
 
+class ControlStationBind(BaseModel):
+    station_id: UUID
+    organization_id: UUID
+
+
+class ControlChallengeSign(BaseModel):
+    user_id: UUID
+    challenge_id: UUID
+    nonce: str = Field(min_length=43, max_length=43)
+
+
+class ControlOnlineLogin(BaseModel):
+    grant_token: str = Field(min_length=100, max_length=4096)
+    email: str = Field(min_length=3, max_length=254)
+    password: str = Field(min_length=12, max_length=1024)
+
+
+class ControlOfflineLogin(BaseModel):
+    email: str = Field(min_length=3, max_length=254)
+    password: str = Field(min_length=1, max_length=1024)
+
+
 @dataclass
 class OcrSummary:
     status: str = "not_started"
@@ -221,6 +253,7 @@ class Capture:
     ocr_summary: OcrSummary = field(default_factory=OcrSummary)
     ocr_result: OcrResult | None = None
     generation: int = 0
+    source: str | None = None
 
     def metadata(self):
         return {
@@ -229,7 +262,7 @@ class Capture:
             "side": self.side,
             "created_at": datetime.fromtimestamp(self.created, timezone.utc).isoformat(),
             "review": self.review,
-            "source": "desktop" if self.owner == "desktop" else "mobile",
+            "source": self.source or ("desktop" if self.owner == "desktop" else "mobile"),
             "attempt": self.attempt,
             "active": self.active,
             "ocr_summary": self.ocr_summary.metadata(),
@@ -250,6 +283,7 @@ class Document:
     extraction_reviews: dict[str, dict] = field(default_factory=dict)
     extraction_source: tuple[str, int, str, int] | None = None
     identity_id: str | None = None
+    source: str | None = None
 
     def active_ids(self) -> list[str]:
         return [value for value in (self.front_capture_id, self.back_capture_id) if value]
@@ -302,6 +336,7 @@ class DocumentGenerationRequestState:
     revision: int = 0
     created: float = field(default_factory=time.time)
     updated: float = field(default_factory=time.time)
+    source: str | None = None
 
     def metadata(self) -> dict[str, Any]:
         return {
@@ -310,7 +345,7 @@ class DocumentGenerationRequestState:
             "template_id": self.template_id,
             "template_version": self.template_version,
             "assignments": self.assignments,
-            "source": "desktop" if self.owner == "desktop" else "mobile",
+            "source": self.source or ("desktop" if self.owner == "desktop" else "mobile"),
             "created_at": datetime.fromtimestamp(self.created, timezone.utc).isoformat(),
             "updated_at": datetime.fromtimestamp(self.updated, timezone.utc).isoformat(),
         }
@@ -373,8 +408,10 @@ class State:
                  document_catalog: DocumentTemplateCatalog, case_store: CaseStore,
                  profile_store: ProfileStore,
                  workspace_store: EncryptedWorkspaceStore | None = None,
-                 saved_receipts_path: Path | None = None):
+                 saved_receipts_path: Path | None = None,
+                 control_sessions: LocalControlSessions | None = None):
         self.desktop_token = desktop_token
+        self.control_sessions = control_sessions
         self.engine = engine
         self.ocr_engine = ocr_engine
         self.extractor = extractor
@@ -390,6 +427,7 @@ class State:
         self.saved_receipts_path = saved_receipts_path
         self.pair_code: str | None = None
         self.pair_deadline = 0.0
+        self.pair_owner_id: str | None = None
         self.sessions: dict[str, float] = {}
         self.session_labels: dict[str, str] = {}
         self.captures: dict[str, Capture] = {}
@@ -421,7 +459,7 @@ class State:
                 "review": item.review, "attempt": item.attempt, "active": item.active,
                 "ocr_summary": vars(item.ocr_summary),
                 "ocr_result": item.ocr_result.to_dict() if item.ocr_result else None,
-                "generation": item.generation,
+                "generation": item.generation, "source": item.source,
             })
         documents = []
         for item in self.documents.values():
@@ -435,7 +473,7 @@ class State:
                 "extraction_reviews": item.extraction_reviews,
                 "extraction_source": list(item.extraction_source)
                     if item.extraction_source else None,
-                "identity_id": item.identity_id,
+                "identity_id": item.identity_id, "source": item.source,
             })
         identities = [{
             "id": item.id, "owner": item.owner, "document_id": item.document_id,
@@ -448,6 +486,7 @@ class State:
             "id": item.id, "owner": item.owner, "template_id": item.template_id,
             "template_version": item.template_version, "assignments": item.assignments,
             "revision": item.revision, "created": item.created, "updated": item.updated,
+            "source": item.source,
         } for item in self.document_generation_requests.values()]
         return {
             "schema": WORKSPACE_SCHEMA, "saved_at": time.time(),
@@ -488,7 +527,8 @@ class State:
                 rectified=_text_to_bytes(raw.get("rectified")), created=float(raw["created"]),
                 review=str(raw.get("review", "pending")), attempt=int(raw.get("attempt", 1)),
                 active=bool(raw.get("active", True)), ocr_summary=summary, ocr_result=result,
-                generation=int(raw.get("generation", 0)))
+                generation=int(raw.get("generation", 0)),
+                source=raw.get("source") or ("desktop" if raw["owner"] == "desktop" else "mobile"))
             self.captures[item.id] = item
         self.documents.clear()
         for raw in payload.get("documents", []):
@@ -505,7 +545,8 @@ class State:
                 extraction_result=result,
                 extraction_reviews=dict(raw.get("extraction_reviews", {})),
                 extraction_source=tuple(source) if source else None,
-                identity_id=raw.get("identity_id"))
+                identity_id=raw.get("identity_id"),
+                source=raw.get("source") or ("desktop" if raw["owner"] == "desktop" else "mobile"))
             self.documents[item.id] = item
         self.approved_identities = {}
         for raw in payload.get("approved_identities", []):
@@ -529,7 +570,8 @@ class State:
                 assignments={key: list(value) for key, value in
                              raw.get("assignments", {}).items()},
                 revision=int(raw.get("revision", 0)), created=float(raw.get("created", now)),
-                updated=float(raw.get("updated", now)))
+                updated=float(raw.get("updated", now)),
+                source=raw.get("source") or ("desktop" if raw["owner"] == "desktop" else "mobile"))
             self.document_generation_requests[item.id] = item
         self.idempotency = {
             (str(owner), str(key)): (str(digest), str(capture_id))
@@ -641,6 +683,9 @@ class State:
         self.idempotency.clear()
         self.pair_code = None
         self.pair_deadline = 0
+        self.pair_owner_id = None
+        if self.control_sessions is not None:
+            self.control_sessions.revoke_mobile()
         while not self.ocr_queue.empty():
             try:
                 self.ocr_queue.get_nowait()
@@ -651,6 +696,11 @@ class State:
 
     def identity(self, token: str) -> str:
         self.prune()
+        if self.control_sessions is not None:
+            try:
+                return self.control_sessions.principal(token).user_id
+            except (GrantError, StationStoreError, ValueError):
+                raise HTTPException(401, "CONTROL_SESSION_EXPIRED") from None
         if secrets.compare_digest(token, self.desktop_token):
             return "desktop"
         if self.sessions.get(token, 0) > time.time():
@@ -658,8 +708,25 @@ class State:
         raise HTTPException(401, "SESSION_EXPIRED")
 
     def actor_label(self, identity: str) -> str:
+        if self.control_sessions is not None:
+            return self.control_sessions.station.current_grant(
+                user_id=identity, public_keys=self.control_sessions.public_keys,
+                now=int(time.time())).email
         return "Poste Windows" if identity == "desktop" else \
             self.session_labels.get(identity, "Appareil mobile")
+
+    def is_holder(self, identity: str) -> bool:
+        if self.control_sessions is None:
+            return identity == "desktop"
+        try:
+            return self.control_sessions.station.current_grant(
+                user_id=identity, public_keys=self.control_sessions.public_keys,
+                now=int(time.time())).role == "holder"
+        except (GrantError, StationStoreError, ValueError):
+            return False
+
+    def can_access(self, identity: str, owner: str) -> bool:
+        return owner == identity or self.is_holder(identity)
 
     def document_status(self, document: Document) -> str:
         captures = [self.captures[value] for value in document.active_ids() if value in self.captures]
@@ -695,7 +762,7 @@ class State:
             "id": document.id,
             "card_model": document.card_model,
             "created_at": datetime.fromtimestamp(document.created, timezone.utc).isoformat(),
-            "source": "desktop" if document.owner == "desktop" else "mobile",
+            "source": document.source or ("desktop" if document.owner == "desktop" else "mobile"),
             "front_capture_id": document.front_capture_id,
             "back_capture_id": document.back_capture_id,
             "status": self.document_status(document),
@@ -720,12 +787,12 @@ class State:
     def visible_identities(self, identity: str) -> list[ApprovedIdentity]:
         self.prune()
         return [item for item in self.approved_identities.values()
-                if identity == "desktop" or item.owner == identity]
+                if self.can_access(identity, item.owner)]
 
     def visible_requests(self, identity: str) -> list[DocumentGenerationRequestState]:
         self.prune()
         return [item for item in self.document_generation_requests.values()
-                if identity == "desktop" or item.owner == identity]
+                if self.can_access(identity, item.owner)]
 
     async def broadcast(self, *, persist: bool = True, retry_storage: bool = False):
         if persist and self.workspace_store is not None:
@@ -883,7 +950,8 @@ def create_app(*, desktop_token: str | None = None, engine=None, ocr_engine=None
                case_store: CaseStore | None = None,
                profile_store: ProfileStore | None = None,
                workspace_store: EncryptedWorkspaceStore | None = None,
-               saved_receipts_path: Path | None = None) -> FastAPI:
+               saved_receipts_path: Path | None = None,
+               control_sessions: LocalControlSessions | None = None) -> FastAPI:
     if credential_store is None or usage_ledger is None or ocr_engine is None:
         default_store, default_usage, default_engine = _default_ocr_components()
         credential_store = credential_store or default_store
@@ -893,7 +961,8 @@ def create_app(*, desktop_token: str | None = None, engine=None, ocr_engine=None
                   extractor or CnieFieldExtractor(),
                   credential_store, usage_ledger, mobile_url, lan_mode,
                   document_catalog or DocumentTemplateCatalog(), case_store or InMemoryCaseStore(),
-                  profile_store or InMemoryProfileStore(), workspace_store, saved_receipts_path)
+                  profile_store or InMemoryProfileStore(), workspace_store, saved_receipts_path,
+                  control_sessions)
     if workspace_store is not None:
         restored = workspace_store.load()
         if restored is not None:
@@ -932,7 +1001,7 @@ def create_app(*, desktop_token: str | None = None, engine=None, ocr_engine=None
                 state.session_labels.clear()
                 state.idempotency.clear()
 
-    app = FastAPI(title="e-notario · Capture service", version="0.8.0-alpha.3", lifespan=lifespan,
+    app = FastAPI(title="Valiris Desk · Capture service", version="0.8.0-alpha.4", lifespan=lifespan,
                   docs_url=None, redoc_url=None, openapi_url=None)
     app.state.capture = state
     @app.exception_handler(UsageStorageError)
@@ -941,7 +1010,7 @@ def create_app(*, desktop_token: str | None = None, engine=None, ocr_engine=None
     app.add_middleware(CORSMiddleware,
         allow_origins=["http://localhost:1420", "http://tauri.localhost", "https://tauri.localhost", "tauri://localhost"],
         allow_methods=["GET", "POST", "PUT", "PATCH", "DELETE"],
-        allow_headers=["Authorization", "Content-Type", "Idempotency-Key"],
+        allow_headers=["Authorization", "Content-Type", "Idempotency-Key", "X-Document-Corners"],
         expose_headers=["Content-Disposition", "X-eNotario-Case-Revision",
                         "X-eNotario-Document-Request-Revision"])
     bearer = HTTPBearer(auto_error=False)
@@ -956,31 +1025,140 @@ def create_app(*, desktop_token: str | None = None, engine=None, ocr_engine=None
         response.headers["Content-Security-Policy"] = "default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' blob: data:; media-src 'self' blob:; connect-src 'self'; font-src 'self'; frame-ancestors 'none'; base-uri 'self'; form-action 'self'"
         return response
 
-    def user(credentials: HTTPAuthorizationCredentials | None = Depends(bearer)):
+    def bootstrap(credentials: HTTPAuthorizationCredentials | None = Depends(bearer)):
+        if credentials is None or not secrets.compare_digest(
+                credentials.credentials, state.desktop_token):
+            raise HTTPException(401, "AUTH_REQUIRED")
+        return credentials.credentials
+
+    def user(request: Request, credentials: HTTPAuthorizationCredentials | None = Depends(bearer)):
         if credentials is None:
             raise HTTPException(401, "AUTH_REQUIRED")
-        return state.identity(credentials.credentials)
+        identity = state.identity(credentials.credentials)
+        if control_sessions is not None:
+            try:
+                request.state.control_principal = control_sessions.principal(credentials.credentials)
+            except (GrantError, StationStoreError, ValueError):
+                raise HTTPException(401, "CONTROL_SESSION_EXPIRED") from None
+        return identity
 
-    def desktop(identity: str = Depends(user)):
+    def desktop(request: Request, identity: str = Depends(user)):
+        if control_sessions is not None:
+            if request.state.control_principal.channel == "desktop":
+                return identity
+            raise HTTPException(403, "DESKTOP_ONLY")
         if identity != "desktop":
             raise HTTPException(403, "DESKTOP_ONLY")
         return identity
 
+    def holder(identity: str = Depends(desktop)):
+        if not state.is_holder(identity):
+            raise HTTPException(403, "HOLDER_ONLY")
+        return identity
+
+    def require_new_work(request: Request) -> None:
+        if control_sessions is not None and not request.state.control_principal.can_start_new(int(time.time())):
+            raise HTTPException(403, "CONTROL_NEW_WORK_EXPIRED")
+
+    if control_sessions is not None:
+        failed_logins = 0
+        login_blocked_until = 0.0
+        login_lock = asyncio.Lock()
+
+        @app.get("/api/control/station")
+        def control_station(_=Depends(bootstrap)):
+            store = control_sessions.station
+            return {"public_key": store.initialize(), "station_id": store.station_id,
+                    "organization_id": store.organization_id}
+
+        @app.post("/api/control/station/bind")
+        def control_bind(body: ControlStationBind, _=Depends(bootstrap)):
+            try:
+                control_sessions.station.bind(station_id=str(body.station_id),
+                                              organization_id=str(body.organization_id))
+            except StationStoreError as exc:
+                raise HTTPException(409, str(exc)) from None
+            return {"status": "bound"}
+
+        @app.post("/api/control/station/sign")
+        def control_sign(body: ControlChallengeSign, _=Depends(bootstrap)):
+            try:
+                signature = control_sessions.station.sign_challenge(
+                    user_id=str(body.user_id), challenge_id=str(body.challenge_id), nonce=body.nonce)
+            except StationStoreError as exc:
+                raise HTTPException(409, str(exc)) from None
+            return {"signature": signature}
+
+        @app.post("/api/control/session/online")
+        async def control_online(body: ControlOnlineLogin, _=Depends(bootstrap)):
+            try:
+                token, expires = await run_in_threadpool(
+                    control_sessions.enroll_desktop, grant_token=body.grant_token,
+                    email=body.email, password=body.password)
+            except (GrantError, StationStoreError, ValueError):
+                raise HTTPException(401, "CONTROL_LOGIN_FAILED") from None
+            principal = control_sessions.principal(token)
+            return {"token": token, "expires_at": expires,
+                    "user_id": principal.user_id, "email": principal.email,
+                    "role": principal.role,
+                    "new_work_until": principal.new_work_until,
+                    "finish_until": principal.finish_until}
+
+        @app.post("/api/control/session/offline")
+        async def control_offline(body: ControlOfflineLogin, _=Depends(bootstrap)):
+            nonlocal failed_logins, login_blocked_until
+            async with login_lock:
+                now = time.time()
+                if now < login_blocked_until:
+                    raise HTTPException(429, "CONTROL_LOGIN_RATE_LIMITED")
+                try:
+                    token, expires = await run_in_threadpool(
+                        control_sessions.login_offline, email=body.email,
+                        password=body.password)
+                except (GrantError, StationStoreError, ValueError):
+                    failed_logins += 1
+                    if failed_logins >= 5:
+                        login_blocked_until = now + 60
+                        failed_logins = 0
+                    raise HTTPException(401, "CONTROL_LOGIN_FAILED") from None
+                failed_logins = 0
+                principal = control_sessions.principal(token)
+                return {"token": token, "expires_at": expires,
+                        "user_id": principal.user_id, "email": principal.email,
+                        "role": principal.role,
+                        "new_work_until": principal.new_work_until,
+                        "finish_until": principal.finish_until}
+
+        @app.get("/api/control/session")
+        def control_session(request: Request, _identity: str = Depends(user)):
+            principal = request.state.control_principal
+            return {"user_id": principal.user_id, "email": principal.email,
+                    "role": principal.role,
+                    "new_work_until": principal.new_work_until,
+                    "finish_until": principal.finish_until}
+
+        @app.delete("/api/control/session")
+        def control_logout(credentials: HTTPAuthorizationCredentials | None = Depends(bearer)):
+            if credentials is None:
+                raise HTTPException(401, "AUTH_REQUIRED")
+            control_sessions.logout(credentials.credentials)
+            return {"status": "signed_out"}
+
     def owned(capture_id: UUID, identity: str) -> Capture:
         capture = state.captures.get(str(capture_id))
-        if capture is None or (identity != "desktop" and capture.owner != identity):
+        if capture is None or not state.can_access(identity, capture.owner):
             raise HTTPException(404, "CAPTURE_NOT_FOUND")
         return capture
 
     def owned_document(document_id: UUID, identity: str) -> Document:
         document = state.documents.get(str(document_id))
-        if document is None or (identity != "desktop" and document.owner != identity):
+        if document is None or not state.can_access(identity, document.owner):
             raise HTTPException(404, "DOCUMENT_NOT_FOUND")
         return document
 
     def owned_generation_request(request_id: UUID, identity: str) -> DocumentGenerationRequestState:
         item = state.document_generation_requests.get(str(request_id))
-        if item is None or (identity != "desktop" and item.owner != identity):
+        if item is None or not state.can_access(identity, item.owner):
             raise HTTPException(404, "DOCUMENT_REQUEST_NOT_FOUND")
         return item
 
@@ -1030,7 +1208,7 @@ def create_app(*, desktop_token: str | None = None, engine=None, ocr_engine=None
             item = state.case_store.get(str(case_id))
         except CaseError as exc:
             raise case_http_error(exc) from None
-        if item is None or (identity != "desktop" and item.owner != identity):
+        if item is None or not state.can_access(identity, item.owner):
             raise HTTPException(404, "CASE_NOT_FOUND")
         return item
 
@@ -1062,7 +1240,7 @@ def create_app(*, desktop_token: str | None = None, engine=None, ocr_engine=None
                 approved = state.approved_identities.get(identity_id)
                 if approved is None or approved.expires <= time.time():
                     raise HTTPException(409, "APPROVED_IDENTITY_EXPIRED")
-                if identity != "desktop" and approved.owner != identity:
+                if not state.can_access(identity, approved.owner):
                     raise HTTPException(403, "APPROVED_IDENTITY_FORBIDDEN")
                 resolved.append(approved.values)
             normalized[role_key] = selected
@@ -1125,7 +1303,7 @@ def create_app(*, desktop_token: str | None = None, engine=None, ocr_engine=None
                 approved = state.approved_identities.get(identity_id)
                 if approved is None or approved.expires <= time.time():
                     raise HTTPException(409, "APPROVED_IDENTITY_EXPIRED")
-                if identity != "desktop" and approved.owner != identity:
+                if not state.can_access(identity, approved.owner):
                     raise HTTPException(403, "APPROVED_IDENTITY_FORBIDDEN")
         return normalized
 
@@ -1248,7 +1426,7 @@ def create_app(*, desktop_token: str | None = None, engine=None, ocr_engine=None
 
     def visible_request_metadata(item: DocumentGenerationRequestState, identity: str) -> dict[str, Any]:
         metadata = item.metadata()
-        if identity != "desktop":
+        if not state.is_holder(identity):
             owned_ids = {approved.id for approved in state.approved_identities.values()
                          if approved.owner == identity}
             metadata["assignments"] = {
@@ -1260,7 +1438,7 @@ def create_app(*, desktop_token: str | None = None, engine=None, ocr_engine=None
 
     @app.get("/api/health")
     def health():
-        return {"status": "ok", "version": "0.8.0-alpha.3", "api_version": 2,
+        return {"status": "ok", "version": "0.8.0-alpha.4", "api_version": 2,
                 "background": {
                     "ocr_worker": "running" if state.worker_task and not state.worker_task.done() else "stopped",
                     "maintenance": "running" if state.cleanup_task and not state.cleanup_task.done() else "stopped",
@@ -1283,8 +1461,8 @@ def create_app(*, desktop_token: str | None = None, engine=None, ocr_engine=None
     async def professional_profiles(identity: str = Depends(user)):
         try:
             async with state.case_lock:
-                values = state.profile_store.list(include_inactive=identity == "desktop")
-                usage_counts = profile_usage_counts() if identity == "desktop" else {}
+                values = state.profile_store.list(include_inactive=state.is_holder(identity))
+                usage_counts = profile_usage_counts() if state.is_holder(identity) else {}
                 return [profile_metadata(item, usage_counts) for item in values]
         except (CaseError, ProfileError) as exc:
             if isinstance(exc, CaseError):
@@ -1383,13 +1561,14 @@ def create_app(*, desktop_token: str | None = None, engine=None, ocr_engine=None
     def list_cases(identity: str = Depends(user)):
         try:
             return [item.summary() for item in state.case_store.list()
-                    if identity == "desktop" or item.owner == identity]
+                    if state.can_access(identity, item.owner)]
         except CaseError as exc:
             raise case_http_error(exc) from None
 
     @app.post("/api/cases", status_code=201)
     async def create_case(body: CaseCreateRequest, request: Request,
                           identity: str = Depends(user)):
+        require_new_work(request)
         key = require_mutation_key(request)
         digest = request_digest("case-create", body.model_dump(mode="json"))
         previous = state.case_mutation_idempotency.get((identity, key))
@@ -1633,7 +1812,7 @@ def create_app(*, desktop_token: str | None = None, engine=None, ocr_engine=None
     @app.post("/api/cases/{case_id}/reopen")
     async def reopen_case(case_id: UUID, body: CaseRevisionRequest,
                           _identity: str = Depends(desktop)):
-        item = owned_case(case_id, "desktop")
+        item = owned_case(case_id, _identity)
         if item.status not in {"final_review", "completed"}:
             raise HTTPException(409, "CASE_NOT_IN_FINAL_REVIEW")
         if item.revision != body.revision:
@@ -1649,7 +1828,7 @@ def create_app(*, desktop_token: str | None = None, engine=None, ocr_engine=None
     @app.post("/api/cases/{case_id}/generate")
     async def generate_case(case_id: UUID, body: CaseGenerateRequest,
                             _identity: str = Depends(desktop)):
-        item = owned_case(case_id, "desktop")
+        item = owned_case(case_id, _identity)
         if item.status != "final_review":
             raise HTTPException(409, "CASE_NOT_IN_FINAL_REVIEW")
         if item.revision != body.revision:
@@ -1657,14 +1836,14 @@ def create_app(*, desktop_token: str | None = None, engine=None, ocr_engine=None
         uuid_assignments = {role: [UUID(value) for value in values]
                             for role, values in item.assignments.items()}
         _, values = validated_assignments(item.template_id, item.template_version,
-                                          uuid_assignments, "desktop")
+                                          uuid_assignments, _identity)
         try:
             payload, slug = await run_in_threadpool(
                 state.document_catalog.render, item.template_id, item.template_version, values,
                 resolved_case_fields(item) if item.mode == "complete" else None)
         except DocumentTemplateError as exc:
             raise template_http_error(exc) from None
-        current = owned_case(case_id, "desktop")
+        current = owned_case(case_id, _identity)
         if current.revision != item.revision or current.status != "final_review":
             raise HTTPException(409, "CASE_STALE_REVISION")
         timestamp = datetime.now().strftime("%Y%m%d-%H%M%S")
@@ -1678,7 +1857,7 @@ def create_app(*, desktop_token: str | None = None, engine=None, ocr_engine=None
     @app.post("/api/cases/{case_id}/complete")
     async def complete_case(case_id: UUID, body: CaseRevisionRequest,
                             _identity: str = Depends(desktop)):
-        item = owned_case(case_id, "desktop")
+        item = owned_case(case_id, _identity)
         if item.status == "completed" and item.revision == body.revision + 1:
             return item.detail()
         if item.status != "final_review":
@@ -1706,7 +1885,7 @@ def create_app(*, desktop_token: str | None = None, engine=None, ocr_engine=None
 
     @app.delete("/api/temporary-data")
     async def clear_temporary_data(body: ClearTemporaryDataRequest,
-                                   _identity: str = Depends(desktop)):
+                                   _identity: str = Depends(holder)):
         async with state.lock, state.case_lock, state.persistence_lock:
             counts = state.clear_temporary_data()
         await state.broadcast()
@@ -1715,17 +1894,19 @@ def create_app(*, desktop_token: str | None = None, engine=None, ocr_engine=None
     @app.get("/api/workspace")
     def workspace(identity: str = Depends(user)):
         visible_documents = [document for document in state.documents.values()
-                             if identity == "desktop" or document.owner == identity]
+                             if state.can_access(identity, document.owner)]
         visible_ids = {document.id for document in visible_documents}
         return {
             "documents": [state.document_metadata(document) for document in reversed(visible_documents)],
             "captures": [state.capture_metadata(capture) for capture in reversed(list(state.captures.values()))
                          if capture.document_id in visible_ids],
-            "connected_devices": len(state.sessions) if identity == "desktop" else 1,
+            "connected_devices": control_sessions.mobile_count(
+                user_id=None if state.is_holder(identity) else identity) if control_sessions is not None
+                else (len(state.sessions) if state.is_holder(identity) else 1),
             "processing": state.processing,
             "storage_error": state.storage_error,
-            "mobile_url": state.mobile_url if identity == "desktop" else None,
-            "lan_mode": state.lan_mode if identity == "desktop" else None,
+            "mobile_url": state.mobile_url,
+            "lan_mode": state.lan_mode,
             "retention_minutes": CAPTURE_TTL // 60,
             "approved_identities": [item.summary() for item in reversed(state.visible_identities(identity))],
             "document_generation_requests": [
@@ -1733,21 +1914,51 @@ def create_app(*, desktop_token: str | None = None, engine=None, ocr_engine=None
                 for item in reversed(state.visible_requests(identity))
             ],
             "case_drafts": [item.summary() for item in state.case_store.list()
-                            if identity == "desktop" or item.owner == identity],
+                            if state.can_access(identity, item.owner)],
         }
 
     @app.post("/api/pairing")
-    async def pairing(_=Depends(desktop)):
+    async def pairing(request: Request, identity: str = Depends(desktop)):
+        require_new_work(request)
         if not state.mobile_url:
             raise HTTPException(409, "LAN_HTTPS_NOT_CONFIGURED")
         state.pair_code = secrets.token_urlsafe(32)
         state.pair_deadline = time.time() + 120
-        return {"url": f"{state.mobile_url.rstrip('/')}/capture/#pair={state.pair_code}", "expires_at": state.pair_deadline}
+        state.pair_owner_id = identity if control_sessions is not None else None
+        control_flag = "&control=1" if control_sessions is not None else ""
+        return {"url": f"{state.mobile_url.rstrip('/')}/capture/#pair={state.pair_code}{control_flag}",
+                "expires_at": state.pair_deadline}
 
     @app.post("/api/pair")
     async def pair(body: PairRequest):
+        nonlocal failed_logins, login_blocked_until
         if not state.pair_code or state.pair_deadline <= time.time() or not secrets.compare_digest(body.code, state.pair_code):
             raise HTTPException(401, "PAIRING_EXPIRED")
+        if control_sessions is not None:
+            if control_sessions.mobile_count() >= 8:
+                raise HTTPException(429, "DEVICE_LIMIT")
+            if not body.email or not body.password or not state.pair_owner_id:
+                raise HTTPException(401, "CONTROL_MOBILE_LOGIN_REQUIRED")
+            async with login_lock:
+                now = time.time()
+                if now < login_blocked_until:
+                    raise HTTPException(429, "CONTROL_LOGIN_RATE_LIMITED")
+                try:
+                    token, expires, user_id = await run_in_threadpool(
+                        control_sessions.login_mobile, email=body.email,
+                        password=body.password, expected_user_id=state.pair_owner_id)
+                except (GrantError, StationStoreError, ValueError):
+                    failed_logins += 1
+                    if failed_logins >= 5:
+                        login_blocked_until = now + 60
+                        failed_logins = 0
+                    raise HTTPException(401, "CONTROL_MOBILE_LOGIN_FAILED") from None
+                failed_logins = 0
+                state.pair_code = None
+                state.pair_owner_id = None
+                await state.broadcast()
+                return {"token": token, "expires_at": expires,
+                        "actor_label": f"Compte {user_id[:8]} · {body.device_name.strip()}"}
         if len(state.sessions) >= 8:
             raise HTTPException(429, "DEVICE_LIMIT")
         state.pair_code = None
@@ -1763,18 +1974,48 @@ def create_app(*, desktop_token: str | None = None, engine=None, ocr_engine=None
                 "actor_label": state.session_labels[token]}
 
     @app.delete("/api/pairing")
-    async def disconnect(_=Depends(desktop)):
+    async def disconnect(identity: str = Depends(desktop)):
+        if control_sessions is not None:
+            control_sessions.revoke_mobile(None if state.is_holder(identity) else identity)
+            if state.pair_owner_id == identity or state.is_holder(identity):
+                state.pair_code = None
+                state.pair_owner_id = None
+            await state.broadcast()
+            return {"status": "disconnected"}
         state.sessions.clear()
         state.session_labels.clear()
         state.pair_code = None
         await state.broadcast()
         return {"status": "disconnected"}
 
+    preview_lock = asyncio.Lock()
+
+    @app.post("/api/capture-preview")
+    async def capture_preview(request: Request, identity: str = Depends(user)):
+        require_new_work(request)
+        if state.processing or preview_lock.locked():
+            raise HTTPException(429, "PROCESSOR_BUSY")
+        if request.headers.get("content-type", "").split(";")[0] not in {"image/jpeg", "image/png"}:
+            raise HTTPException(415, "JPEG_OR_PNG_REQUIRED")
+        async with preview_lock:
+            payload = bytearray()
+            async for chunk in request.stream():
+                if len(payload) + len(chunk) > 512 * 1024:
+                    raise HTTPException(413, "IMAGE_TOO_LARGE")
+                payload.extend(chunk)
+            try:
+                return await run_in_threadpool(preview_capture, bytes(payload), state.engine.opencv_detector, state.engine.config)
+            except InvalidImageError as exc:
+                raise HTTPException(400, exc.code) from None
+            except Exception:
+                raise HTTPException(500, "PREVIEW_FAILED") from None
+
     @app.post("/api/captures")
     async def upload(request: Request, side: Literal["front", "back"] = "front",
                      document_id: UUID | None = None,
                      card_model: Literal["CNIE_MA_2020", "CNIE_MA_LEGACY"] = "CNIE_MA_2020",
                      identity: str = Depends(user)):
+        require_new_work(request)
         if state.lock.locked():
             raise HTTPException(429, "PROCESSOR_BUSY")
         key = request.headers.get("Idempotency-Key")
@@ -1785,10 +2026,21 @@ def create_app(*, desktop_token: str | None = None, engine=None, ocr_engine=None
         content_type = request.headers.get("content-type", "").split(";")[0]
         if content_type not in {"image/jpeg", "image/png"}:
             raise HTTPException(415, "JPEG_OR_PNG_REQUIRED")
+        manual_corners = None
+        corner_header = request.headers.get("X-Document-Corners")
+        if corner_header is not None:
+            try:
+                if len(corner_header) > 512:
+                    raise ValueError("INVALID_MANUAL_CORNERS")
+                manual_corners = CornerSelection.model_validate_json(corner_header).corners
+                if any(not 0 <= value <= 1 for point in manual_corners for value in point):
+                    raise ValueError("INVALID_MANUAL_CORNERS")
+            except (ValueError, ValidationError):
+                raise HTTPException(400, "INVALID_MANUAL_CORNERS") from None
         async with state.lock:
             state.prune()
             document = state.documents.get(str(document_id)) if document_id else None
-            if document_id and (not document or (identity != "desktop" and document.owner != identity)):
+            if document_id and (not document or not state.can_access(identity, document.owner)):
                 raise HTTPException(404, "DOCUMENT_NOT_FOUND")
             if document and document.card_model != card_model:
                 raise HTTPException(409, "DOCUMENT_CARD_MODEL_LOCKED")
@@ -1802,6 +2054,8 @@ def create_app(*, desktop_token: str | None = None, engine=None, ocr_engine=None
                     raise HTTPException(413, "IMAGE_TOO_LARGE")
                 payload.extend(chunk)
             digest = hashlib.sha256(payload).hexdigest() + side + str(document_id or "") + card_model
+            if manual_corners is not None:
+                digest += json.dumps(manual_corners, separators=(",", ":"))
             previous = state.idempotency.get((identity, key))
             if previous:
                 if previous[0] != digest:
@@ -1810,12 +2064,17 @@ def create_app(*, desktop_token: str | None = None, engine=None, ocr_engine=None
                 return state.captures[previous[1]].metadata()
             state.processing = True
             try:
-                result = await run_in_threadpool(state.engine.rectify, bytes(payload))
+                if manual_corners is None:
+                    result = await run_in_threadpool(state.engine.rectify, bytes(payload))
+                else:
+                    result = await run_in_threadpool(state.engine.rectify, bytes(payload), manual_corners=manual_corners)
                 metadata = result.to_dict()
                 for name in ("opencv", "docquadnet"):
                     metadata.get(name, {}).pop("error", None)
                 if document is None:
-                    document = Document(str(uuid4()), identity, card_model=card_model)
+                    document = Document(str(uuid4()), identity, card_model=card_model,
+                        source=request.state.control_principal.channel if control_sessions is not None
+                        else ("desktop" if identity == "desktop" else "mobile"))
                     state.documents[document.id] = document
                 else:
                     state.invalidate_extraction(document)
@@ -1829,7 +2088,9 @@ def create_app(*, desktop_token: str | None = None, engine=None, ocr_engine=None
                     previous_capture.ocr_result = None
                     previous_capture.ocr_summary = OcrSummary(status="cancelled")
                 capture = Capture(str(uuid4()), identity, side, document.id, bytes(payload), content_type,
-                                   metadata, result.rectified_image, attempt=attempt)
+                                   metadata, result.rectified_image, attempt=attempt,
+                                   source=request.state.control_principal.channel if control_sessions is not None
+                                   else ("desktop" if identity == "desktop" else "mobile"))
                 # A successful local geometry/quality result is the image gate.
                 # Human approval remains mandatory for the extracted CNIE fields.
                 capture.review = "accepted" if metadata["status"] == "success" else "retake"
@@ -1854,7 +2115,7 @@ def create_app(*, desktop_token: str | None = None, engine=None, ocr_engine=None
         if variant == "metadata":
             return state.capture_metadata(capture)
         if variant == "ocr":
-            if identity != "desktop":
+            if not state.is_holder(identity):
                 raise HTTPException(403, "DESKTOP_ONLY")
             if capture.id in state.pending_ocr_commits:
                 raise HTTPException(503, "TEMPORARY_STORAGE_WRITE_FAILED")
@@ -2019,7 +2280,7 @@ def create_app(*, desktop_token: str | None = None, engine=None, ocr_engine=None
 
     @app.patch("/api/documents/{document_id}/extraction/review")
     async def review_extraction(document_id: UUID, body: ExtractionReviewRequest,
-                                identity: str = Depends(user)):
+                                request: Request, identity: str = Depends(user)):
         document = owned_document(document_id, identity)
         result = document.extraction_result
         if result is None or document.extraction_summary.status != "review_required":
@@ -2045,7 +2306,8 @@ def create_app(*, desktop_token: str | None = None, engine=None, ocr_engine=None
             document.extraction_reviews[key] = {
                 "decision": submitted.decision,
                 "value": value,
-                "reviewed_by": "desktop" if identity == "desktop" else "mobile",
+                "reviewed_by": request.state.control_principal.channel if control_sessions is not None
+                    else ("desktop" if identity == "desktop" else "mobile"),
                 "reviewed_at": datetime.now(timezone.utc).isoformat(),
             }
         document.extraction_summary.revision += 1
@@ -2058,7 +2320,7 @@ def create_app(*, desktop_token: str | None = None, engine=None, ocr_engine=None
 
     @app.post("/api/documents/{document_id}/extraction/approve")
     async def approve_extraction(document_id: UUID, body: ExtractionApprovalRequest,
-                                 identity: str = Depends(user)):
+                                 request: Request, identity: str = Depends(user)):
         document = owned_document(document_id, identity)
         result = document.extraction_result
         if result is None:
@@ -2086,7 +2348,8 @@ def create_app(*, desktop_token: str | None = None, engine=None, ocr_engine=None
             raise HTTPException(409, "APPROVED_IDENTITY_LIMIT")
         document.extraction_summary.status = "approved"
         document.extraction_summary.approved_at = time.time()
-        document.extraction_summary.approved_by = "desktop" if identity == "desktop" else "mobile"
+        document.extraction_summary.approved_by = (request.state.control_principal.channel if control_sessions is not None
+            else ("desktop" if identity == "desktop" else "mobile"))
         identity_id = str(uuid4())
         snapshot_values = {key: reviewed_value(document, key) for key in result.fields}
         approved_at = document.extraction_summary.approved_at
@@ -2095,7 +2358,7 @@ def create_app(*, desktop_token: str | None = None, engine=None, ocr_engine=None
             owner=document.owner,
             document_id=document.id,
             extraction_revision=document.extraction_summary.revision,
-            source="desktop" if document.owner == "desktop" else "mobile",
+            source=document.source or ("desktop" if document.owner == "desktop" else "mobile"),
             card_template=result.template or "CNIE_MA_2020",
             values=snapshot_values,
             created=approved_at,
@@ -2139,6 +2402,7 @@ def create_app(*, desktop_token: str | None = None, engine=None, ocr_engine=None
     @app.post("/api/document-generation-requests")
     async def create_document_request(body: DocumentGenerationCreate, request: Request,
                                       identity: str = Depends(user)):
+        require_new_work(request)
         key = require_mutation_key(request)
         raw_assignments = {name: [str(value) for value in values]
                            for name, values in body.assignments.items()}
@@ -2161,6 +2425,8 @@ def create_app(*, desktop_token: str | None = None, engine=None, ocr_engine=None
             item = DocumentGenerationRequestState(
                 id=str(uuid4()), owner=identity, template_id=body.template_id,
                 template_version=body.template_version, assignments=normalized,
+                source=request.state.control_principal.channel if control_sessions is not None
+                    else ("desktop" if identity == "desktop" else "mobile"),
             )
             state.document_generation_requests[item.id] = item
             response = {**item.metadata(), "warnings": repeated_role_warnings(item.assignments)}
@@ -2224,40 +2490,40 @@ def create_app(*, desktop_token: str | None = None, engine=None, ocr_engine=None
             "id": str(request_id), "revision": body.revision,
         })
         async with state.lock:
-            previous = state.document_request_idempotency.get(("desktop", key))
+            previous = state.document_request_idempotency.get((_identity, key))
             if previous:
                 if previous[0] != digest:
                     raise HTTPException(409, "IDEMPOTENCY_CONFLICT")
                 await state.persist_workspace()
                 return previous[1]
-            item = owned_generation_request(request_id, "desktop")
+            item = owned_generation_request(request_id, _identity)
             if item.revision != body.revision:
                 raise HTTPException(409, "DOCUMENT_REQUEST_STALE_REVISION")
             state.document_generation_requests.pop(item.id)
             response = {"status": "deleted", "id": item.id, "revision": item.revision,
                         "reason": "saved", "deleted_at": time.time()}
-            remember_document_mutation("desktop", key, digest, response)
+            remember_document_mutation(_identity, key, digest, response)
         await state.broadcast()
         return response
 
     @app.post("/api/document-generation-requests/{request_id}/generate")
     async def generate_document(request_id: UUID, body: CaseRevisionRequest | None = None,
                                 _identity: str = Depends(desktop)):
-        item = owned_generation_request(request_id, "desktop")
+        item = owned_generation_request(request_id, _identity)
         revision = item.revision
         if body is not None and body.revision != revision:
             raise HTTPException(409, "DOCUMENT_REQUEST_STALE_REVISION")
         uuid_assignments = {name: [UUID(value) for value in values]
                             for name, values in item.assignments.items()}
         _, values = validated_assignments(item.template_id, item.template_version,
-                                          uuid_assignments, "desktop")
+                                          uuid_assignments, _identity)
         try:
             payload, slug = await run_in_threadpool(
                 state.document_catalog.render, item.template_id, item.template_version, values)
         except DocumentTemplateError as exc:
             raise template_http_error(exc) from None
         state.prune()
-        current = owned_generation_request(request_id, "desktop")
+        current = owned_generation_request(request_id, _identity)
         if current.revision != revision:
             raise HTTPException(409, "DOCUMENT_REQUEST_STALE_REVISION")
         timestamp = datetime.now().strftime("%Y%m%d-%H%M%S")
@@ -2278,7 +2544,7 @@ def create_app(*, desktop_token: str | None = None, engine=None, ocr_engine=None
         return info
 
     @app.get("/api/ocr/config")
-    def ocr_config(_=Depends(desktop)):
+    def ocr_config(_=Depends(holder)):
         metadata = state.credential_store.metadata()
         return {
             "configured": metadata is not None,
@@ -2290,7 +2556,7 @@ def create_app(*, desktop_token: str | None = None, engine=None, ocr_engine=None
         }
 
     @app.put("/api/ocr/config/credential")
-    async def import_credential(request: Request, _=Depends(desktop)):
+    async def import_credential(request: Request, _=Depends(holder)):
         if request.headers.get("content-type", "").split(";")[0] != "application/json":
             raise HTTPException(415, "OCR_CREDENTIAL_INVALID")
         payload = bytearray()
@@ -2305,18 +2571,18 @@ def create_app(*, desktop_token: str | None = None, engine=None, ocr_engine=None
         return {"configured": True, **metadata.to_dict(), "region": "eu"}
 
     @app.post("/api/ocr/config/test")
-    async def test_ocr_connection(_=Depends(desktop)):
+    async def test_ocr_connection(_=Depends(holder)):
         result = await run_in_threadpool(state.ocr_engine.recognize, _synthetic_test_image(), uuid4())
         if result.status == OcrStatus.FAILED:
             raise HTTPException(409 if result.retryable else 400, result.error_code or "OCR_INVALID_RESPONSE")
         return {"status": "connected", "region": "eu", "latency_ms": result.metrics.get("latency_ms")}
 
     @app.delete("/api/ocr/config/credential")
-    def delete_credential(_=Depends(desktop)):
+    def delete_credential(_=Depends(holder)):
         return {"status": "deleted", "existed": state.credential_store.delete()}
 
     @app.get("/api/ocr/usage")
-    def ocr_usage(_=Depends(desktop)):
+    def ocr_usage(_=Depends(holder)):
         return state.usage.summary().to_dict()
 
     @app.websocket("/api/events")

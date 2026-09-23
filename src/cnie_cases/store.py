@@ -27,7 +27,7 @@ class DataProtector(Protocol):
 
 class DpapiDataProtector:
     def __init__(self, *, entropy: bytes = DPAPI_ENTROPY,
-                 description: str = "e-notario temporary case key"):
+                 description: str = "Valiris Desk temporary case key"):
         self.entropy = entropy
         self.description = description
 

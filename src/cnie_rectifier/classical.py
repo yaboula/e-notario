@@ -10,6 +10,8 @@ from .config import RectifierConfig
 from .domain import DetectorResult
 from .geometry import (
     border_distance_ratio,
+    document_edges,
+    boundary_edge_evidence,
     edge_lengths,
     edge_support,
     is_convex,
@@ -18,6 +20,7 @@ from .geometry import (
     quad_area,
     quad_inside_image,
     refine_quad_with_edges,
+    _sample_edge_support,
 )
 
 
@@ -46,6 +49,9 @@ class OpenCvDetector:
             work = image_bgr
         gray = cv2.cvtColor(work, cv2.COLOR_BGR2GRAY)
         recipes = self._edge_recipes(gray)
+        recipes.append(("color_canny", cv2.morphologyEx(
+            document_edges(work), cv2.MORPH_CLOSE, np.ones((7, 7), np.uint8)
+        )))
         candidates: list[_Candidate] = []
         for recipe_name, binary in recipes:
             candidates.extend(self._extract(binary, gray, recipe_name))
@@ -67,7 +73,8 @@ class OpenCvDetector:
         original_quad = best.corners / scale
         refined = refine_quad_with_edges(image_bgr, original_quad)
         original_gray = cv2.cvtColor(image_bgr, cv2.COLOR_BGR2GRAY)
-        refined_support = edge_support(original_gray, refined)
+        boundary = boundary_edge_evidence(image_bgr, refined)
+        refined_support = max(edge_support(original_gray, refined), float(boundary["color_edge_support"]))
         final_score = 0.8 * best.score + 0.2 * refined_support
         rejection_codes: list[str] = []
         if final_score < self.config.min_classical_score:
@@ -77,6 +84,7 @@ class OpenCvDetector:
         if not is_convex(refined) or is_self_intersecting(refined):
             rejection_codes.append("INVALID_QUADRILATERAL_GEOMETRY")
         metrics = dict(best.metrics)
+        metrics.update(boundary)
         metrics.update(
             {
                 "work_scale": scale,
@@ -143,6 +151,9 @@ class OpenCvDetector:
                 if float(lengths.min()) < 30 or float(lengths.max() / lengths.min()) > 12:
                     continue
                 support = edge_support(gray, quad)
+                if recipe == "color_canny":
+                    # Score the very evidence that generated the candidate.
+                    support = max(support, _sample_edge_support(binary, quad))
                 margin = border_distance_ratio(quad, w, h)
                 rectangularity = min(1.0, contour_area / max(area, 1.0))
                 area_component = min(1.0, area_ratio / 0.55)

@@ -2,9 +2,11 @@ from __future__ import annotations
 
 import argparse
 import asyncio
+import base64
 import ipaddress
 import json
 import os
+import re
 import secrets
 import signal
 import socket
@@ -19,6 +21,67 @@ from pathlib import Path
 
 def settings_dir() -> Path:
     return Path(os.environ.get("LOCALAPPDATA", str(Path.home()))) / "e-notario-v2"
+
+
+def reset_control_station(expected_station_id: str, *, path: Path | None = None,
+                          protector=None) -> None:
+    """Remove only a deactivated station identity after verifying its exact UUID."""
+    from uuid import UUID
+    from cnie_cases import DpapiDataProtector
+    from cnie_control import ProtectedStationStore, StationStoreError
+
+    try:
+        expected = str(UUID(expected_station_id))
+    except ValueError as exc:
+        raise RuntimeError("CONTROL_RESET_STATION_ID_INVALID") from exc
+    station_path = path or settings_dir() / "control-station.dpapi"
+    if not station_path.is_file():
+        raise RuntimeError("CONTROL_RESET_STATION_MISSING")
+    active_protector = protector or DpapiDataProtector(
+        entropy=b"e-notario-v2/control-station/v1",
+        description="Valiris Desk station identity and offline accounts")
+    try:
+        station = ProtectedStationStore(station_path, active_protector)
+    except StationStoreError as exc:
+        raise RuntimeError(str(exc)) from exc
+    if station.station_id != expected:
+        raise RuntimeError("CONTROL_RESET_STATION_ID_MISMATCH")
+    try:
+        station_path.unlink()
+    except OSError as exc:
+        raise RuntimeError("CONTROL_RESET_STATION_DELETE_FAILED") from exc
+
+
+def control_public_keys(environ: dict[str, str] | None = None) -> dict[str, bytes]:
+    """Load one current key or a small rotation keyring from the packaged environment."""
+    environment = os.environ if environ is None else environ
+    configured = environment.get("CNIE_CONTROL_LEASE_PUBLIC_KEYS", "").strip()
+    if configured:
+        entries = configured.split(";")
+    else:
+        key_id = environment.get("CNIE_CONTROL_LEASE_KEY_ID", "").strip()
+        encoded = environment.get("CNIE_CONTROL_LEASE_PUBLIC_KEY", "").strip()
+        entries = [f"{key_id}={encoded}"]
+    if not 1 <= len(entries) <= 3:
+        raise RuntimeError("CONTROL_LEASE_KEY_INVALID")
+    result: dict[str, bytes] = {}
+    encoded_values: set[str] = set()
+    for entry in entries:
+        key_id, separator, encoded = entry.partition("=")
+        if not separator or not re.fullmatch(r"[A-Za-z0-9._-]{1,64}", key_id) or \
+                not re.fullmatch(r"[A-Za-z0-9_-]{43}", encoded) or \
+                key_id in result or encoded in encoded_values:
+            raise RuntimeError("CONTROL_LEASE_KEY_INVALID")
+        try:
+            public_key = base64.urlsafe_b64decode(encoded + "=")
+        except (ValueError, base64.binascii.Error) as exc:
+            raise RuntimeError("CONTROL_LEASE_KEY_INVALID") from exc
+        if len(public_key) != 32 or \
+                base64.urlsafe_b64encode(public_key).decode().rstrip("=") != encoded:
+            raise RuntimeError("CONTROL_LEASE_KEY_INVALID")
+        result[key_id] = public_key
+        encoded_values.add(encoded)
+    return result
 
 
 @dataclass(frozen=True)
@@ -116,7 +179,7 @@ def setup_lan(address: str, *, mode: str = "manual"):
         ca_cert = x509.load_pem_x509_certificate(ca_cert_path.read_bytes())
     else:
         ca_key = rsa.generate_private_key(public_exponent=65537, key_size=3072)
-        name = x509.Name([x509.NameAttribute(NameOID.COMMON_NAME, "e-notario v2 · Office CA")])
+        name = x509.Name([x509.NameAttribute(NameOID.COMMON_NAME, "Valiris Desk · Office CA")])
         ca_cert = (x509.CertificateBuilder().subject_name(name).issuer_name(name)
                    .public_key(ca_key.public_key()).serial_number(x509.random_serial_number())
                    .not_valid_before(now - timedelta(minutes=5)).not_valid_after(now + timedelta(days=730))
@@ -129,7 +192,7 @@ def setup_lan(address: str, *, mode: str = "manual"):
         ca_cert_path.write_bytes(ca_cert.public_bytes(serialization.Encoding.PEM))
     key = rsa.generate_private_key(public_exponent=65537, key_size=2048)
     cert = (x509.CertificateBuilder()
-            .subject_name(x509.Name([x509.NameAttribute(NameOID.COMMON_NAME, "e-notario v2 capture")]))
+            .subject_name(x509.Name([x509.NameAttribute(NameOID.COMMON_NAME, "Valiris Desk capture")]))
             .issuer_name(ca_cert.subject).public_key(key.public_key())
             .serial_number(x509.random_serial_number()).not_valid_before(now - timedelta(minutes=5))
             .not_valid_after(now + timedelta(days=90))
@@ -199,6 +262,7 @@ async def serve(open_browser: bool):
     from cnie_cases import DpapiDataProtector, EncryptedSqliteCaseStore
     from .workspace_store import DpapiWorkspaceProtector, EncryptedWorkspaceStore
     from cnie_profiles import ProtectedProfileStore
+    from cnie_control import LocalControlSessions, ProtectedStationStore
 
     class SharedStateServer(uvicorn.Server):
         @contextmanager
@@ -216,11 +280,20 @@ async def serve(open_browser: bool):
     profile_store = ProtectedProfileStore(
         settings_dir() / "professional-profiles.dpapi",
         DpapiDataProtector(entropy=b"e-notario-v2/professional-profiles/v1",
-                           description="e-notario professional profiles"))
+                           description="Valiris Desk professional profiles"))
     workspace_store = EncryptedWorkspaceStore(
         settings_dir() / "temporary-workspace.sqlite3", DpapiWorkspaceProtector())
+    control_sessions = None
+    if os.environ.get("CNIE_CONTROL_MODE") == "required":
+        public_keys = control_public_keys()
+        station_store = ProtectedStationStore(
+            settings_dir() / "control-station.dpapi",
+            DpapiDataProtector(entropy=b"e-notario-v2/control-station/v1",
+                               description="Valiris Desk station identity and offline accounts"))
+        control_sessions = LocalControlSessions(station_store, public_keys)
     app = create_app(desktop_token=token, mobile_url=mobile_url, lan_mode=lan.get("mode") if lan else None,
         case_store=case_store, profile_store=profile_store, workspace_store=workspace_store,
+        control_sessions=control_sessions,
         saved_receipts_path=settings_dir() / "saved-case-receipts.dpapi",
         desktop_dist=root / "apps/desktop/dist", mobile_dist=root / "apps/mobile-capture/dist")
     common = dict(app=app, lifespan="off", access_log=False, log_level="error",
@@ -249,6 +322,9 @@ def main():
     setup = sub.add_parser("setup-lan")
     setup.add_argument("--ip", required=True)
     sub.add_parser("detect-lan")
+    reset_station = sub.add_parser("reset-control-station")
+    reset_station.add_argument("--station-id", required=True,
+        help="Exact UUID of the station already deactivated in the portal")
     args = parser.parse_args()
     if args.command == "setup-lan":
         setup_lan(args.ip)
@@ -256,6 +332,9 @@ def main():
         selection = detect_lan_address()
         print(json.dumps({"ip": selection.address, "source": selection.source,
                           "candidates": selection.candidates}, separators=(",", ":")))
+    elif args.command == "reset-control-station":
+        reset_control_station(args.station_id)
+        print("CONTROL_STATION_IDENTITY_RESET")
     else:
         try:
             asyncio.run(serve(args.open))

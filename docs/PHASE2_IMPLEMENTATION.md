@@ -1,0 +1,78 @@
+# Fase 2 · Estado de implementación
+
+Fecha: 2026-09-20. Piloto previsto: hasta cinco despachos de Marruecos y entre uno y tres PC por despacho. Esta nota no altera ni reclasifica los pendientes de Fase 1.
+
+## Decisiones cerradas
+
+- La marca comercial es **Valiris** y el producto se llama **Valiris Desk**. Los identificadores técnicos históricos (`@notario/*`, `ENOTARIO_*`, `enotario.*` y `%LOCALAPPDATA%\e-notario-v2`) se mantienen por compatibilidad y no se muestran como marca al usuario.
+- El SaaS controla despachos, cuentas, estaciones y licencias. Las imágenes CNIE, el OCR de trabajo, los expedientes y los Word permanecen en la estación del despacho.
+- Hay dos roles: titular y operador. El titular administra miembros, estaciones y OCR. Ambos trabajan con documentos. Cada operador ve solamente sus expedientes temporales; el titular ve todos los expedientes de su estación.
+- El acceso usa invitación por correo y contraseña. El TOTP es obligatorio para titulares y administradores. El móvil exige cuenta personal y QR de una estación ya autenticada.
+- Cada autorización local está firmada y permite como máximo siete días de trabajo nuevo, sin superar el vencimiento de la licencia. Al terminar ese plazo quedan hasta 24 horas para revisar expedientes existentes y guardar su Word; se bloquean nuevas capturas y nuevos expedientes.
+- La interfaz del piloto es completa en francés y árabe. Francés es el idioma inicial y árabe activa RTL. La contratación y renovación del piloto son manuales.
+- El despliegue inicial usará niveles gratuitos para mantener un coste operativo adicional de 0 € durante la validación de los primeros cinco despachos. Se revisará el paso a planes de pago antes de incorporar el sexto despacho, o antes si un límite gratuito afecta al servicio.
+- El certificado Authenticode se aplaza mientras la distribución sea interna y controlada. Una firma pública de confianza sigue siendo obligatoria antes de distribuir el instalador comercialmente sin asistencia técnica.
+
+## Implementado en el repositorio
+
+### Control SaaS
+
+- `supabase/migrations/202609200001_control_v1.sql`: organizaciones, membresías, licencias, estaciones, retos, auditoría, RLS y funciones transaccionales con límites de estaciones. La auditoría diferencia invitación, restauración y revocación, y registra cada autorización local emitida para hacer trazables las renovaciones sin almacenar datos CNIE.
+- Las identidades administrativas de plataforma quedan separadas de los despachos: el bootstrap rechaza promover a un miembro existente y la función transaccional rechaza añadir como titular u operador una cuenta ya promovida. Esto evita que una cuenta de cliente acumule por error privilegios globales.
+- `supabase/functions/control-v1/`: API autenticada para miembros, estaciones, licencias, prueba de posesión de estación y autorizaciones Ed25519. Las operaciones de titular y plataforma exigen `aal2`. Si Auth creó una cuenta de invitación pero falló la asociación posterior o se perdió la respuesta, el mismo correo puede reintentarse: la función recupera únicamente cuentas que nunca iniciaron sesión, sin despacho y ajenas a la administración de plataforma, completa la membresía y envía un enlace para establecer la contraseña. Las cuentas activas, revocadas o pertenecientes a otro despacho mantienen sus flujos explícitos y no se reasignan.
+- `supabase/config.toml`: configuración local reproducible de Supabase CLI; no aplica por sí sola los ajustes Auth al proyecto alojado. `control-v1` valida los JWT de usuario en la función mediante Supabase Auth para admitir las claves asimétricas sin depender de la verificación heredada de la pasarela. El runbook enumera los valores de producción que deben comprobarse antes de invitar usuarios.
+- `apps/control-portal/`: invitación, acceso, recuperación de contraseña, alta TOTP, miembros, estaciones y licencias. Las listas distinguen una invitación pendiente de una cuenta ya utilizada o desactivada. La recuperación comunica un fallo real del servicio de correo y las fechas de licencia se muestran en el mismo día UTC que usa el editor. La creación y recuperación de contraseña exigen confirmación, presentan los errores Auth con mensajes localizados y no aceptan una sesión anterior como prueba de un enlace válido. El alta TOTP retira factores pendientes abandonados antes de crear uno nuevo y el cambio rápido entre despachos descarta respuestas anteriores. La interfaz funciona en francés y árabe RTL.
+- `packages/control-client/`: contrato HTTP tipado para portal y cliente Windows.
+
+### Estación Windows
+
+- `src/cnie_control/`: identidad Ed25519 de estación y autorizaciones/cuentas locales protegidas mediante el protector DPAPI inyectado por Windows; contraseña local derivada con scrypt; sesiones personales de escritorio y móvil. La autorización firmada vincula UUID y correo de la cuenta a la estación; el acceso local rechaza un correo distinto, incluso tras renovar la autorización.
+- `src/cnie_capture/api.py`: el token de arranque queda limitado a rutas de activación; las rutas de datos exigen una sesión personal. Se aplican propietario, rol y permiso de trabajo nuevo en capturas, expedientes, QR, OCR y limpieza temporal.
+- El titular puede ver los expedientes de la estación y administrar OCR. Un operador queda aislado de los expedientes de otros operadores.
+- Al vencer el permiso de trabajo nuevo, la interfaz entra automáticamente en modo de finalización: muestra hasta cuándo puede terminarse el trabajo y desactiva capturas, QR, expedientes y solicitudes Word parciales nuevas. La revisión y generación de Word de trabajos existentes continúan durante el margen firmado y la API mantiene la misma restricción. Al caducar o ser rechazada la sesión personal, o al terminar las 24 horas de cierre, Windows oculta el espacio de trabajo y detiene las consultas periódicas; permite volver a entrar sin conexión si solo venció la sesión, y exige renovación en línea si venció la autorización.
+- La dirección HTTPS local necesaria para generar el QR está disponible para todo usuario autenticado de la estación. El operador puede conectar su propio móvil, pero la configuración manual de red permanece en la interfaz del titular.
+- `apps/desktop/src-tauri/`: variante de compilación `control`, clave pública de licencia embebida en compilación y almacenamiento DPAPI. La variante normal conserva la compatibilidad de Fase 1.
+- `scripts/build-release.ps1 -Control` exige una fuente Git limpia y registrada, valida la configuración pública de Supabase y Ed25519, rechaza variables habituales con secretos de servidor, compila con la característica `control` y conserva el proceso de firma existente; no admite una configuración de ejemplo para el instalador piloto. Después de verificar Authenticode genera un manifiesto sin secretos con commit, variante, fecha UTC, firmante, host de control, identificadores `kid`, tamaño y SHA-256 del instalador.
+- La configuración firmada de Windows sustituye la regla general de desarrollo `https://*.supabase.co` por el origen exacto del proyecto validado durante la compilación. El runbook exige la misma limitación en la CSP del portal publicado.
+- Windows admite entre una y tres claves públicas de autorización durante una rotación, manteniendo compatible el par `kid`/clave original. Esto permite distribuir primero una versión puente, cambiar después la clave firmante del servicio y retirar la anterior cuando hayan vencido todas sus autorizaciones.
+- Soporte puede sustituir en el mismo PC una estación ya desactivada mediante `reset-control-station --station-id <UUID>`: el comando valida el UUID dentro del estado DPAPI y elimina solo la identidad, cuentas offline y concesiones de esa estación. Los datos temporales, OCR, perfiles, recibos y Word no se tocan; el siguiente arranque genera una identidad nueva que el titular debe activar.
+- `apps/desktop/src/ControlUnlock.tsx`: acceso personal en línea o sin conexión, MFA del titular, activación de estación, renovación de autorización y selector FR/AR. Tras entrar, Windows muestra el correo de la cuenta, su rol y, cuando está disponible, el nombre del despacho para evitar trabajar bajo una identidad equivocada.
+- La interfaz operativa heredada de Windows —captura, revisión de 14 campos, expedientes, Word, perfiles, dispositivos y diagnóstico— ofrece textos franceses y árabes; el cambio a árabe activa RTL y conserva la dirección de los datos latinos o árabes según su campo. Los datos JSON de diagnóstico mantienen LTR y los iconos de botones respetan los márgenes RTL.
+- El catálogo documental exige título y descripción en francés, además de las etiquetas árabes y francesas de cada rol. El cliente tipado trata esos valores como obligatorios y las interfaces usan directamente francés o árabe, sin depender de textos españoles heredados. El español se conserva únicamente en el esquema histórico de las plantillas para no romper los documentos de Fase 1.
+- Los errores nativos de guardado Word, exportación, recibos protegidos, apertura del Explorador y configuración LAN usan códigos internos estables y se presentan con mensajes específicos FR/AR. Las exportaciones esperan el resultado nativo, por lo que un fallo de disco o destino ya no queda como rechazo asíncrono invisible.
+
+### Móvil
+
+- El QR de control identifica la estación y la cuenta que lo creó, pero no concede acceso por sí mismo.
+- El emparejamiento exige correo y contraseña de una cuenta local autorizada y rechaza una cuenta distinta del operador que creó el QR.
+- La sesión móvil conserva el mismo propietario y los mismos límites de expediente que la sesión Windows. Cada operador ve el número de móviles conectados a su propia cuenta; el titular ve el total de la estación.
+- Al vencer la sesión móvil de cuatro horas o recibir un 401 de la estación, el navegador detiene la cámara, retira el token y los datos de trabajo de la vista y solicita un QR nuevo.
+- `apps/mobile-capture/src/ControlPairing.tsx`: acceso personal y selector FR/AR.
+- Captura, guía de cámara, ajuste de esquinas, revisión de datos, preparación parcial y expedientes completos muestran francés y árabe; el sentido de navegación cambia con RTL.
+
+## Verificación realizada
+
+- Siete pruebas de autorización/control local, incluida manipulación de firma, estación incorrecta, retroceso de reloj, separación por usuario, periodo de cierre y aceptación simultánea de claves antigua/nueva durante una rotación.
+- Prueba integrada de API: el token de arranque no lee datos; dos operadores quedan aislados; el titular ve todo y administra OCR; el operador recibe la dirección necesaria para generar su QR y este rechaza otra cuenta; al vencer trabajo nuevo se bloquean un expediente y una solicitud Word parcial nuevos, pero se permite terminar y generar el Word existente.
+- Veintidós pruebas focalizadas de guardado Word y expedientes Windows, incluidas las barreras visuales del modo de finalización y la traducción de errores nativos; comprobación de tipos del escritorio.
+- Comprobación Deno y pruebas de la función de control; análisis completo de la migración SQL.
+- Comprobación Deno posterior del flujo recuperable de invitación; las tres pruebas focalizadas de concesiones y prueba de estación continúan pasando.
+- Compilación y comprobación de tipos del portal, escritorio y móvil; `cargo check` de Tauri normal y con la característica `control`.
+- Tras la localización: 30 pruebas de interfaz focalizadas en Windows (revisión, Word, recuperación y perfiles) y 22 en móvil; comprobación de tipos de Windows.
+- Inspección en navegador de acceso al portal en francés y árabe RTL a 1366×768 y 360×780, del emparejamiento móvil en ambos idiomas a 360×780, y de las vistas Windows de captura, dispositivos y diagnóstico a 1366×768. Se corrigieron el selector de idioma duplicado, el nombre inicial del teléfono, los títulos de pestaña, dos cadenas operativas no localizadas, los márgenes de iconos RTL y la dirección del JSON de diagnóstico. Las vistas árabes revisadas no presentan desbordamiento horizontal. Esta inspección no cubre todavía capturas procesadas, OCR, revisión ni Word con datos de ensayo.
+- Cinco pruebas focalizadas de caducidad de sesión: Windows retira los datos visibles al terminar la autorización o la sesión personal, también ante un rechazo 401 anticipado; móvil limpia el estado temporal y vuelve al QR al vencer por reloj o recibir 401. Pasaron las comprobaciones de tipos de ambas interfaces.
+- Prueba focalizada del reinicio de identidad de estación: un UUID incorrecto conserva el archivo y el UUID exacto elimina solo el estado de control, dejando intacto el almacenamiento temporal. El subcomando figura en la ayuda real del ejecutable.
+- Validación del preflight de release: el script PowerShell analiza correctamente, una ejecución sintética desde el árbol con cambios se detiene antes de consultar el certificado o firmar, y la configuración CSP generada contiene únicamente el origen Supabase exacto, sin comodín.
+- Validación del contrato lingüístico del catálogo: 18 pruebas documentales, comprobación de tipos de Windows y móvil, 25 pruebas focalizadas de Windows y 16 de móvil. Las vistas verificadas consumen el contenido francés obligatorio y ya no usan el español como fallback operativo.
+- Revisión visual con el motor y la API reales sobre un almacenamiento temporal aislado: expediente de herencia completo con doce campos y tres perfiles profesionales mixtos FR/AR. Windows se comprobó a 1366×768 y móvil a 360×780, en francés y árabe RTL. No hubo desbordamiento horizontal ni errores de aplicación; se corrigieron los plurales visibles de expedientes, cambios pendientes y dispositivos asociados.
+- Endurecimiento del portal: comprobación de tipos y compilación de producción; inspección móvil de recuperación y enlace de invitación inválido a 360×780 en francés y árabe RTL. Las rutas muestran la acción correcta sin sesión, no presentan desbordamiento horizontal y la consola queda sin errores. Se añadió el icono propio que faltaba; el formulario de contraseña exige ahora una autenticación recibida por el enlace y no se abre solo porque exista otra sesión persistida.
+
+## Pendiente antes del piloto real
+
+1. Completar la revisión visual con fotografías CNIE autorizadas que recorran captura, OCR y revisión estructurada; validar la terminología final con usuarios francófonos y arabófonos antes de entregar. El expediente completo, los perfiles profesionales y su edición desde Windows y móvil ya se revisaron con datos representativos a 1366×768 y 360×780.
+2. Crear el proyecto Supabase en Frankfurt, configurar dominio y SMTP, generar la clave Ed25519 de producción, guardar el secreto solo en la función y ejecutar la compilación Windows `-Control` con su clave pública.
+3. Ejecutar en infraestructura real el despliegue y alta inicial definidos en `PHASE2_PILOT_RUNBOOK.md`; el bootstrap idempotente del primer administrador ya está preparado en `supabase/bootstrap/first-platform-admin.psql`.
+4. Hacer una validación corta en infraestructura real: aislamiento entre dos despachos, MFA, revocación de estación, renovación, siete días sin conexión y cierre de 24 horas.
+5. Firmar y distribuir el instalador de control del piloto. El procedimiento de soporte, copia de configuración y rotación de claves ya está preparado en `PHASE2_SUPPORT_PLAYBOOK.md` y debe validarse con los responsables reales.
+
+El piloto todavía no debe entregarse a clientes: faltan infraestructura real, firma/distribución y revisión visual/lingüística de la interfaz FR/AR. El núcleo de autorización y aislamiento ya está integrado y probado localmente.

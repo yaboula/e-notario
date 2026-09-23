@@ -45,7 +45,7 @@ def _blob(value: bytes) -> tuple[_Blob, Any]:
 
 
 def _crypt(value: bytes, protect: bool, *, entropy_value: bytes = ENTROPY,
-           description: str = "e-notario Google Vision") -> bytes:
+           description: str = "Valiris Desk Google Vision") -> bytes:
     if os.name != "nt":
         raise CredentialError("OCR_CREDENTIAL_STORAGE_UNAVAILABLE")
     source, source_buffer = _blob(value)
@@ -81,7 +81,7 @@ def _crypt(value: bytes, protect: bool, *, entropy_value: bytes = ENTROPY,
 
 
 def protect_current_user(value: bytes, *, entropy: bytes = ENTROPY,
-                         description: str = "e-notario protected data") -> bytes:
+                         description: str = "Valiris Desk protected data") -> bytes:
     return _crypt(value, True, entropy_value=entropy, description=description)
 
 

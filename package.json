@@ -1,13 +1,15 @@
 {
-  "name": "e-notario-v2",
+  "name": "valiris-desk",
   "private": true,
-  "version": "0.8.0-alpha.3",
+  "version": "0.8.0-alpha.4",
   "packageManager": "pnpm@9.15.9",
   "scripts": {
     "dev": "pnpm --filter @notario/desktop dev",
-    "build": "pnpm --filter @notario/desktop build && pnpm --filter @notario/mobile build",
+    "build": "pnpm --filter @notario/desktop build && pnpm --filter @notario/mobile build && pnpm --filter @notario/control-portal build",
     "typecheck": "pnpm -r typecheck",
+    "control:dev": "pnpm --filter @notario/control-portal dev",
     "desktop": "pnpm --filter @notario/desktop tauri dev",
     "desktop:build": "pnpm --filter @notario/desktop tauri build"
-  }
+  },
+  "workspaces": ["apps/*", "packages/*"]
 }

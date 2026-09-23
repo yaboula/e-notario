@@ -11,7 +11,7 @@ vi.mock('@tauri-apps/api/core',()=>native);
 
 const template:TemplateSummary={schema_version:'enotario.document-template/v2',
   id:'ma.marriage',version:'1.6.0',slug:'matrimonio',title_es:'Matrimonio',
-  title_fr:'Acte de mariage',title_ar:'زواج',description_es:'Piloto',language:'ar-MA',
+  title_fr:'Acte de mariage',title_ar:'زواج',description_es:'Piloto',description_fr:'Pilote',language:'ar-MA',
   roles:[],fields:[]};
 const draft:CaseDraft={id:'10000000-0000-0000-0000-000000000001',
   template_id:template.id,template_version:template.version,mode:'complete',
@@ -46,54 +46,65 @@ async function openFixture({open=true,item=draft}:{open?:boolean;item?:CaseDraft
   const client=new QueryClient({defaultOptions:{queries:{retry:false}}});
   render(<AppTheme><QueryClientProvider client={client}><FullCaseCenter api={api}
     identities={[]} cases={[draft]} onChanged={()=>{}} onNavigationBlockedChange={onNavigationBlockedChange} active/></QueryClientProvider></AppTheme>);
-  await screen.findByText('Piloto');
+  await screen.findByText('Pilote');
   if(open){
-    fireEvent.change(screen.getByRole('combobox',{name:'Abrir un expediente'}),{target:{value:draft.id}});
-    await screen.findByRole('button',{name:'Guardar y abrir en Word'});
+    fireEvent.change(screen.getByRole('combobox',{name:'Ouvrir un dossier'}),{target:{value:draft.id}});
+    await screen.findByRole('button',{name:'Enregistrer et ouvrir dans Word'});
   }
   return {generateCase,completeCase,caseFn,onNavigationBlockedChange};
 }
 
 describe('complete case native saving',()=>{
+  it('keeps new cases disabled during the finishing-only window',async()=>{
+    const api={templates:vi.fn().mockResolvedValue([template]),
+      professionalProfiles:vi.fn().mockResolvedValue([])} as unknown as CaptureApi;
+    const client=new QueryClient({defaultOptions:{queries:{retry:false}}});
+    render(<AppTheme><QueryClientProvider client={client}><FullCaseCenter api={api}
+      identities={[]} cases={[]} onChanged={()=>{}} active newWorkAllowed={false}/>
+    </QueryClientProvider></AppTheme>);
+    expect((await screen.findByRole('button',{name:'Créer un dossier temporaire'})).hasAttribute('disabled')).toBe(true);
+    expect(screen.getByText(/seulement d’ouvrir et de terminer les dossiers existants/)).toBeTruthy();
+  });
+
   it('offers reopening unfinished cases before creating another draft',async()=>{
     await openFixture({open:false});
-    expect(screen.getByText(/Hay 1 expediente sin finalizar/)).toBeTruthy();
-    expect(screen.getByRole('button',{name:'Crear otro expediente temporal'})).toBeTruthy();
-    expect(screen.getByRole('option',{name:/ma.marriage · Revisión final/})).toBeTruthy();
-    expect(screen.getByRole('combobox',{name:'Abrir un expediente'})).toHaveProperty('value','');
+    expect(screen.getByText(/1 dossier reste à terminer/)).toBeTruthy();
+    expect(screen.getByRole('button',{name:'Créer un autre dossier temporaire'})).toBeTruthy();
+    expect(screen.getByRole('option',{name:/ma.marriage · Révision finale/})).toBeTruthy();
+    expect(screen.getByRole('combobox',{name:'Ouvrir un dossier'})).toHaveProperty('value','');
   });
 
   it('keeps final review intact when the native save dialog is cancelled',async()=>{
     native.save.mockResolvedValue({saved:false,path:null,opened:false});
     const {completeCase}=await openFixture();
-    fireEvent.click(screen.getByRole('button',{name:'Guardar y abrir en Word'}));
-    const notice=await screen.findByText('Guardado cancelado. El expediente permanece en revisión final.');
+    fireEvent.click(screen.getByRole('button',{name:'Enregistrer et ouvrir dans Word'}));
+    const notice=await screen.findByText('Enregistrement annulé. Le dossier reste en révision finale.');
     expect(notice.closest('[role="alert"]')?.className).toContain('MuiAlert-colorInfo');
     expect(completeCase).not.toHaveBeenCalled();
-    expect(screen.getByRole('button',{name:'Guardar y abrir en Word'}).hasAttribute('disabled')).toBe(false);
+    expect(screen.getByRole('button',{name:'Enregistrer et ouvrir dans Word'}).hasAttribute('disabled')).toBe(false);
   });
 
   it('completes the case only after native saving confirms success',async()=>{
     native.save.mockResolvedValue({saved:true,path:savedPath,opened:true,receipt_id:'receipt-1'});
     const {completeCase}=await openFixture();
-    fireEvent.click(screen.getByRole('button',{name:'Guardar y abrir en Word'}));
-    const notice=await screen.findByText('Documento guardado y abierto en Word.');
+    fireEvent.click(screen.getByRole('button',{name:'Enregistrer et ouvrir dans Word'}));
+    const notice=await screen.findByText('Document enregistré et ouvert dans Word.');
     expect(notice.closest('[role="alert"]')?.className).toContain('MuiAlert-colorSuccess');
     expect(native.invoke).toHaveBeenCalledWith('save_docx',{
       name:'matrimonio-20260916-120000.docx',bytes:[80,75,3,4],caseContext:{id:draft.id,revision:3}});
     expect(completeCase).toHaveBeenCalledWith(draft.id,3);
     expect(native.acknowledge).toHaveBeenCalledWith('receipt-1');
-    expect(screen.queryByRole('button',{name:'Guardar y abrir en Word'})).toBeNull();
+    expect(screen.queryByRole('button',{name:'Enregistrer et ouvrir dans Word'})).toBeNull();
   });
 
   it('preserves the saved file and offers Explorer when the associated application fails',async()=>{
     native.save.mockResolvedValue({saved:true,path:savedPath,opened:false,receipt_id:'receipt-1'});
     const {completeCase}=await openFixture();
-    fireEvent.click(screen.getByRole('button',{name:'Guardar y abrir en Word'}));
-    const notice=await screen.findByText('Documento guardado, pero Windows no pudo abrir Word. El archivo sigue disponible.');
+    fireEvent.click(screen.getByRole('button',{name:'Enregistrer et ouvrir dans Word'}));
+    const notice=await screen.findByText('Document enregistré, mais Windows n’a pas pu ouvrir Word. Le fichier reste disponible.');
     expect(notice.closest('[role="alert"]')?.className).toContain('MuiAlert-colorWarning');
     expect(completeCase).toHaveBeenCalledTimes(1);
-    fireEvent.click(screen.getByRole('button',{name:'Mostrar en el Explorador'}));
+    fireEvent.click(screen.getByRole('button',{name:'Afficher dans l’Explorateur'}));
     await waitFor(()=>expect(native.invoke).toHaveBeenLastCalledWith('reveal_file',{path:savedPath}));
   });
 
@@ -101,20 +112,20 @@ describe('complete case native saving',()=>{
     native.save.mockResolvedValue({saved:true,path:savedPath,opened:true,receipt_id:'receipt-1'});
     const {completeCase,generateCase,onNavigationBlockedChange}=await openFixture();
     completeCase.mockRejectedValueOnce(new TypeError('connection lost'));
-    fireEvent.click(screen.getByRole('button',{name:'Guardar y abrir en Word'}));
-    const retry=await screen.findByRole('button',{name:'Cerrar expediente guardado'});
-    expect(screen.getByRole('combobox',{name:'Abrir un expediente'}).hasAttribute('disabled')).toBe(true);
-    expect(screen.getByRole('button',{name:'Guardar y abrir en Word'}).hasAttribute('disabled')).toBe(true);
+    fireEvent.click(screen.getByRole('button',{name:'Enregistrer et ouvrir dans Word'}));
+    const retry=await screen.findByRole('button',{name:'Fermer le dossier enregistré'});
+    expect(screen.getByRole('combobox',{name:'Ouvrir un dossier'}).hasAttribute('disabled')).toBe(true);
+    expect(screen.getByRole('button',{name:'Enregistrer et ouvrir dans Word'}).hasAttribute('disabled')).toBe(true);
     await waitFor(()=>expect(onNavigationBlockedChange).toHaveBeenLastCalledWith(true));
     const unload=new Event('beforeunload',{cancelable:true});
     window.dispatchEvent(unload);
     expect(unload.defaultPrevented).toBe(true);
     fireEvent.click(retry);
-    await screen.findByText('Documento guardado y expediente cerrado.');
+    await screen.findByText('Document enregistré et dossier fermé.');
     expect(completeCase).toHaveBeenCalledTimes(2);
     expect(generateCase).toHaveBeenCalledTimes(1);
     expect(native.save).toHaveBeenCalledTimes(1);
-    expect(screen.getByRole('combobox',{name:'Abrir un expediente'}).hasAttribute('disabled')).toBe(false);
+    expect(screen.getByRole('combobox',{name:'Ouvrir un dossier'}).hasAttribute('disabled')).toBe(false);
     await waitFor(()=>expect(onNavigationBlockedChange).toHaveBeenLastCalledWith(false));
   });
 
@@ -122,14 +133,14 @@ describe('complete case native saving',()=>{
     native.receipts.mockResolvedValue([{id:'receipt-restarted',case_id:draft.id,revision:3,
       path:savedPath,created_at:Date.now()/1000,expires_at:Date.now()/1000+86400,confirmed:true}]);
     const {completeCase,generateCase}=await openFixture({open:false});
-    fireEvent.click(await screen.findByRole('button',{name:'Recuperar expediente'}));
-    fireEvent.click(await screen.findByRole('button',{name:'Cerrar expediente guardado'}));
-    await screen.findByText('Documento guardado y expediente cerrado.');
+    fireEvent.click(await screen.findByRole('button',{name:'Récupérer le dossier'}));
+    fireEvent.click(await screen.findByRole('button',{name:'Fermer le dossier enregistré'}));
+    await screen.findByText('Document enregistré et dossier fermé.');
     expect(completeCase).toHaveBeenCalledWith(draft.id,3);
     expect(native.acknowledge).toHaveBeenCalledWith('receipt-restarted');
     expect(generateCase).not.toHaveBeenCalled();
     expect(native.save).not.toHaveBeenCalled();
-    expect(screen.queryByRole('region',{name:'Guardados recuperables'})).toBeNull();
+    expect(screen.queryByRole('region',{name:'Enregistrements récupérables'})).toBeNull();
   });
 
   it('does not close a case from an unconfirmed receipt',async()=>{
@@ -137,7 +148,7 @@ describe('complete case native saving',()=>{
       created_at:Date.now()/1000,expires_at:Date.now()/1000+86400,confirmed:false};
     native.receipts.mockResolvedValue([receipt]);
     const {completeCase}=await openFixture({open:false,item:{...draft,status:'editing',revision:5}});
-    const button=await screen.findByRole('button',{name:'Recuperar expediente'});
+    const button=await screen.findByRole('button',{name:'Récupérer le dossier'});
     expect(button.hasAttribute('disabled')).toBe(true);
     expect(completeCase).not.toHaveBeenCalled();
     expect(native.acknowledge).not.toHaveBeenCalled();
@@ -147,8 +158,8 @@ describe('complete case native saving',()=>{
     native.receipts.mockResolvedValue([{id:'receipt-stale',case_id:draft.id,revision:3,path:savedPath,
       created_at:Date.now()/1000,expires_at:Date.now()/1000+86400,confirmed:true}]);
     const {completeCase}=await openFixture({open:false,item:{...draft,status:'editing',revision:5}});
-    fireEvent.click(await screen.findByRole('button',{name:'Recuperar expediente'}));
-    await screen.findByText('Este recibo corresponde a una revisión anterior. No se cerró ningún expediente y el archivo guardado permanece independiente.');
+    fireEvent.click(await screen.findByRole('button',{name:'Récupérer le dossier'}));
+    await screen.findByText('Ce reçu correspond à une révision antérieure. Aucun dossier n’a été fermé et le fichier enregistré reste indépendant.');
     expect(completeCase).not.toHaveBeenCalled();
     expect(native.acknowledge).not.toHaveBeenCalled();
   });
@@ -156,10 +167,10 @@ describe('complete case native saving',()=>{
   it('blocks generation until protected receipt verification succeeds',async()=>{
     native.receipts.mockRejectedValueOnce(new Error('DPAPI failure'));
     const {generateCase}=await openFixture();
-    const generate=screen.getByRole('button',{name:'Guardar y abrir en Word'});
-    await screen.findByText('La generación permanece bloqueada hasta verificar los recibos de guardado.');
+    const generate=screen.getByRole('button',{name:'Enregistrer et ouvrir dans Word'});
+    await screen.findByText('La génération reste bloquée jusqu’à la vérification des reçus d’enregistrement.');
     expect(generate.hasAttribute('disabled')).toBe(true);
-    fireEvent.click(screen.getByRole('button',{name:'Reintentar'}));
+    fireEvent.click(screen.getByRole('button',{name:'Réessayer'}));
     await waitFor(()=>expect(generate.hasAttribute('disabled')).toBe(false));
     expect(generateCase).not.toHaveBeenCalled();
   });
@@ -167,18 +178,18 @@ describe('complete case native saving',()=>{
   it('does not announce receipt verification failure as a successful save',async()=>{
     native.receipts.mockRejectedValueOnce(new Error('DPAPI failure'));
     await openFixture({open:false});
-    const notice=await screen.findByText('No se pudieron verificar los recibos de guardado protegidos. Reintenta antes de generar otro documento.');
+    const notice=await screen.findByText('Impossible de vérifier les reçus d’enregistrement protégés. Réessayez avant de générer un autre document.');
     expect(notice.closest('[role="alert"]')?.className).toContain('MuiAlert-colorInfo');
-    expect(screen.getByRole('button',{name:'Reintentar'})).toBeTruthy();
+    expect(screen.getByRole('button',{name:'Réessayer'})).toBeTruthy();
   });
 
   it('retains the receipt when server closure succeeded but local acknowledgement fails',async()=>{
     native.save.mockResolvedValue({saved:true,path:savedPath,opened:true,receipt_id:'receipt-1'});
     native.acknowledge.mockRejectedValueOnce(new Error('protected store temporarily unavailable'));
     const {completeCase}=await openFixture();
-    fireEvent.click(screen.getByRole('button',{name:'Guardar y abrir en Word'}));
-    fireEvent.click(await screen.findByRole('button',{name:'Cerrar expediente guardado'}));
-    await screen.findByText('Documento guardado y expediente cerrado.');
+    fireEvent.click(screen.getByRole('button',{name:'Enregistrer et ouvrir dans Word'}));
+    fireEvent.click(await screen.findByRole('button',{name:'Fermer le dossier enregistré'}));
+    await screen.findByText('Document enregistré et dossier fermé.');
     expect(completeCase).toHaveBeenCalledTimes(2);
     expect(native.acknowledge).toHaveBeenCalledTimes(2);
     expect(native.save).toHaveBeenCalledTimes(1);

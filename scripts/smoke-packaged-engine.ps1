@@ -74,6 +74,33 @@ try {
         throw 'PACKAGED_CORRUPT_USAGE_NOT_BLOCKED'
     }
     Remove-Item -LiteralPath $usagePath
+    # Synthetic scanner checks use the isolated, credential-free process only.
+    $ocrConfiguration = Invoke-RestMethod 'http://127.0.0.1:8787/api/ocr/config' -Headers $desktopHeaders
+    if ($ocrConfiguration.configured) { throw 'PACKAGED_SYNTHETIC_OCR_NOT_ISOLATED' }
+    Add-Type -AssemblyName System.Drawing
+    $previewBitmap = [Drawing.Bitmap]::new(640,480)
+    $previewGraphics = [Drawing.Graphics]::FromImage($previewBitmap)
+    $previewBuffer = [IO.MemoryStream]::new()
+    $brush = [Drawing.SolidBrush]::new([Drawing.Color]::FromArgb(180,180,180))
+    try {
+        $previewGraphics.Clear([Drawing.Color]::FromArgb(45,55,60))
+        $previewGraphics.FillRectangle($brush,70,70,500,330)
+        $previewBitmap.Save($previewBuffer,[Drawing.Imaging.ImageFormat]::Png)
+        $preview = Invoke-RestMethod 'http://127.0.0.1:8787/api/capture-preview' -Headers $mobileHeaders -Method Post -ContentType 'image/png' -Body $previewBuffer.ToArray()
+        if ($preview.guidance -ne 'ready' -or $preview.corners.Count -ne 4) { throw 'PACKAGED_SCANNER_PREVIEW_FAILED' }
+    } finally { $brush.Dispose(); $previewGraphics.Dispose(); $previewBitmap.Dispose(); $previewBuffer.Dispose() }
+    $manualBitmap = [Drawing.Bitmap]::new(2400,1800)
+    $manualGraphics = [Drawing.Graphics]::FromImage($manualBitmap)
+    $manualBuffer = [IO.MemoryStream]::new()
+    try {
+        $manualGraphics.Clear([Drawing.Color]::FromArgb(180,180,180))
+        $manualBitmap.Save($manualBuffer,[Drawing.Imaging.ImageFormat]::Png)
+        $scannerHeaders = @{Authorization=('Bearer ' + $paired.token);'Idempotency-Key'=[guid]::NewGuid().ToString();'X-Document-Corners'='{"corners":[[0.1,0.1],[0.9,0.1],[0.9,0.9],[0.1,0.9]]}'}
+        $manualCapture = Invoke-RestMethod 'http://127.0.0.1:8787/api/captures' -Headers $scannerHeaders -Method Post -ContentType 'image/png' -Body $manualBuffer.ToArray()
+        if ($manualCapture.result.status -ne 'success' -or $manualCapture.result.detector_used -ne 'manual' -or -not $manualCapture.result.quality_metrics.manual_corners) { throw 'PACKAGED_MANUAL_SCANNER_FAILED' }
+        $replayed = Invoke-RestMethod 'http://127.0.0.1:8787/api/captures' -Headers $scannerHeaders -Method Post -ContentType 'image/png' -Body $manualBuffer.ToArray()
+        if ($replayed.id -ne $manualCapture.id) { throw 'PACKAGED_SCANNER_IDEMPOTENCY_FAILED' }
+    } finally { $manualGraphics.Dispose(); $manualBitmap.Dispose(); $manualBuffer.Dispose() }
     $template = $catalog | Where-Object id -eq 'ma.marriage' | Select-Object -First 1
     if (-not $template) { throw 'PACKAGED_TEMPLATE_MISSING' }
     $caseBody = @{template_id=$template.id;template_version=$template.version;mode='complete'} | ConvertTo-Json
@@ -91,6 +118,8 @@ try {
         mobile_restricted_statuses=($statuses -join ',')
         corrupt_usage_status=$usageStatus
         corrupt_usage_code=$usageCode
+        scanner_preview_guidance=$preview.guidance
+        scanner_manual_detector=$manualCapture.result.detector_used
         storage_root=$storageRoot
     } | ConvertTo-Json -Compress
 } finally {

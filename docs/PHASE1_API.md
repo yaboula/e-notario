@@ -211,3 +211,10 @@ Los errores de dominio HTTP usan `{"detail":"CODIGO_PUBLICO"}`. La validación e
 Estados habituales: 400 contrato de idempotencia incorrecto; 401 sin autorización válida; 403 escritorio/propiedad prohibida; 404 recurso no disponible; 409 conflicto de estado/revisión/dominio; 422 estructura inválida; 500 plantilla/generación/integridad interna; 503 fallo de persistencia temporal. La lista de ejemplos no sustituye los códigos exactos del cliente y del motor.
 
 Los avisos por personas o campos documentales ausentes no deben convertirse en errores bloqueantes en UI. Los errores de autenticación, aprobación, integridad, concurrencia y capacidad sí deben impedir la operación afectada.
+
+
+## Extensiones de escáner alpha.4 (API 2)
+
+`POST /api/capture-preview` admite JPEG/PNG autenticado, máximo 512 KiB y 1.048.576 píxeles decodificados. Devuelve `{dimensions:[width,height],corners:[[x,y],... ]|null,guidance:"searching"|"closer"|"margin"|"lighting"|"ready"}`. Coordenadas normalizadas en la imagen orientada. No guarda vistas ni crea capturas/documentos ni llama al proveedor OCR. Responde 429 si otra vista está en curso o hay captura en procesamiento. 400 para imagen inválida, 413 para exceso de bytes. `ready` es solo orientación de encuadre, no aceptación de calidad.
+
+`POST /api/captures` admite opcionalmente cabecera `X-Document-Corners: {"corners":[[x,y],[x,y],[x,y],[x,y]]}` con cuatro puntos normalizados, finitos, numéricos y dentro de [0,1], en orden perimetral. El original JPEG/PNG permanece en el body. Cabecera máxima 512 caracteres. Selección inválida estructural devuelve 400 `INVALID_MANUAL_CORNERS`; geometría cruzada/degenerada devuelve captura rechazada con ese código. La selección participa en el digest de idempotencia: cambiar puntos con la misma clave devuelve 409. Debe generarse una clave nueva al editar el contorno. Identidad, propiedad de documento, sustitución de cara, OCR y revisión humana conservan las mismas reglas.

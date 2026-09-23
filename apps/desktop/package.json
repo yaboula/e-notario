@@ -1,7 +1,7 @@
 {
   "name": "@notario/desktop",
   "private": true,
-  "version": "0.8.0-alpha.3",
+  "version": "0.8.0-alpha.4",
   "type": "module",
   "scripts": {
     "dev": "vite --host 127.0.0.1 --port 1420",
@@ -13,6 +13,8 @@
   "dependencies": {
     "@notario/ui": "workspace:*",
     "@notario/api-client": "workspace:*",
+    "@notario/control-client": "workspace:*",
+    "@supabase/supabase-js": "^2.116.0",
     "@tanstack/react-query": "^5.90.0",
     "@tauri-apps/api": "^2.10.0",
     "qrcode.react": "^4.2.0",

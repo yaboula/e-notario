@@ -17,7 +17,7 @@ from .domain import DocumentTemplate, DocumentTemplateError, TemplateBinding, Te
 SCHEMA_V1 = "enotario.document-template/v1"
 SCHEMA_V2 = "enotario.document-template/v2"
 SUPPORTED_SCHEMA_VERSIONS = {SCHEMA_V1, SCHEMA_V2}
-GENERATOR_VERSION = "0.8.0-alpha.3"
+GENERATOR_VERSION = "0.8.0-alpha.4"
 MAX_DOCX_BYTES = 25 * 1024 * 1024
 W = "http://schemas.openxmlformats.org/wordprocessingml/2006/main"
 R = "http://schemas.openxmlformats.org/officeDocument/2006/relationships"
@@ -100,7 +100,8 @@ def _parse_manifest(folder: Path) -> DocumentTemplate:
         raise DocumentTemplateError("DOCUMENT_TEMPLATE_INVALID") from exc
     if raw.get("schema_version") not in SUPPORTED_SCHEMA_VERSIONS:
         raise DocumentTemplateError("DOCUMENT_TEMPLATE_INVALID")
-    required = ("id", "version", "slug", "title_es", "title_ar", "description_es", "roles",
+    required = ("id", "version", "slug", "title_es", "title_fr", "title_ar",
+                "description_es", "description_fr", "roles",
                 "template_sha256", "legal_text_sha256")
     if any(key not in raw for key in required):
         raise DocumentTemplateError("DOCUMENT_TEMPLATE_INVALID")
@@ -114,7 +115,7 @@ def _parse_manifest(folder: Path) -> DocumentTemplate:
     try:
         roles = tuple(TemplateRole(
             key=item["key"], label_es=item["label_es"],
-            label_fr=item.get("label_fr", item["label_es"]), label_ar=item["label_ar"],
+            label_fr=item["label_fr"], label_ar=item["label_ar"],
             minimum=int(item["minimum"]), maximum=int(item["maximum"]),
         ) for item in raw["roles"])
     except (KeyError, TypeError, ValueError) as exc:

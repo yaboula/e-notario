@@ -1,0 +1,48 @@
+# Local project metadata used by the Supabase CLI. Production URLs, SMTP and
+# secrets are configured per hosted project as described in the pilot runbook.
+project_id = "e-notario-v2"
+
+[db]
+major_version = 17
+
+[db.migrations]
+enabled = true
+schema_paths = []
+
+[db.seed]
+enabled = false
+
+[auth]
+enabled = true
+site_url = "http://127.0.0.1:1422"
+additional_redirect_urls = [
+  "http://127.0.0.1:1422/accept-invite",
+  "http://127.0.0.1:1422/recover",
+]
+jwt_expiry = 3600
+enable_signup = false
+enable_anonymous_sign_ins = false
+minimum_password_length = 12
+
+[auth.email]
+enable_signup = false
+double_confirm_changes = true
+enable_confirmations = true
+secure_password_change = true
+
+[auth.mfa]
+max_enrolled_factors = 3
+
+[auth.mfa.totp]
+enroll_enabled = true
+verify_enabled = true
+
+[edge_runtime]
+enabled = true
+policy = "per_worker"
+deno_version = 2
+
+[functions.control-v1]
+# User JWTs are checked by Auth inside control-v1 on every non-OPTIONS request.
+# This avoids the gateway's legacy JWT compatibility path with asymmetric keys.
+verify_jwt = false

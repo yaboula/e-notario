@@ -151,12 +151,13 @@ def test_model_failure_is_contained(synthetic_capture):
     assert result.docquadnet.error.startswith("RuntimeError")
 
 
-def test_model_only_fallback_accepts_colored_rounded_portrait_card(portrait_colored_capture):
+def test_color_edges_allow_both_detectors_to_accept_rounded_portrait_card(portrait_colored_capture):
     payload, _ = portrait_colored_capture
     result = CnieRectifier().rectify(payload)
     assert result.status is RectificationStatus.SUCCESS, result.to_dict()
-    assert result.detector_used.value == "docquadnet"
-    assert result.warnings == ["CLASSICAL_DETECTOR_MISSED"]
+    assert result.detector_used.value == "hybrid"
+    assert result.opencv.valid and result.docquadnet.valid
+    assert result.warnings == []
     assert result.quality_metrics["card_area_ratio"] < 0.45
     assert result.quality_metrics["card_diagonal_ratio"] >= 0.50
     assert result.docquadnet.metrics["mask_quad_iou"] >= 0.70

@@ -1,11 +1,15 @@
 # Documentación de e-notario
 
-La referencia actual es la [documentación integral de Fase 1](DOCUMENTACION_FASE1.md), actualizada para `0.8.0-alpha.3`, API 2, el 18 de septiembre de 2026, junto con el [estado del saneamiento](SANEAMIENTO_FASE1.md). El cierre funcional local está aceptado por el responsable del producto; no equivale a aprobación jurídica, publicación estable firmada ni SaaS comercial ya desplegado.
+La referencia actual es la [documentación integral de Fase 1](DOCUMENTACION_FASE1.md), actualizada para `0.8.0-alpha.4`, API 2, el 18 de septiembre de 2026, junto con el [estado del saneamiento](SANEAMIENTO_FASE1.md). El cierre funcional local está aceptado por el responsable del producto; no equivale a aprobación jurídica, publicación estable firmada ni SaaS comercial ya desplegado.
 
 ## Referencias principales
 
 - [Saneamiento previo a Fase 2: correcciones, evidencia y gates abiertos](SANEAMIENTO_FASE1.md)
 - [Traspaso al nuevo chat de Fase 2: contexto, decisiones y pendientes](PHASE2_HANDOFF.md)
+- [Plan ejecutable del piloto SaaS híbrido de Fase 2](PHASE2_PILOT_PLAN.md)
+- [Estado real de implementación de Fase 2](PHASE2_IMPLEMENTATION.md)
+- [Puesta en marcha del piloto de Fase 2](PHASE2_PILOT_RUNBOOK.md)
+- [Soporte, recuperación y rotación de claves de Fase 2](PHASE2_SUPPORT_PLAYBOOK.md)
 - [Documentación integral de Fase 1: producto, ingeniería y operación](DOCUMENTACION_FASE1.md)
 - [API local: rutas, permisos, contratos y concurrencia](PHASE1_API.md)
 - [Arquitectura, seguridad, recuperación y evidencias de Fase 1](PHASE1_ARCHITECTURE.md)

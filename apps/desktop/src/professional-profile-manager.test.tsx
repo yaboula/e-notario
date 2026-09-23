@@ -12,17 +12,17 @@ const profile:ProfessionalProfile={
   in_use:false,usage_count:0,
 };
 
-function openManager(){fireEvent.click(screen.getByText('Perfiles profesionales'))}
+function openManager(){fireEvent.click(screen.getByText('Profils professionnels'))}
 
 describe('professional profile manager',()=>{
   it('creates a profile only after an Arabic name is supplied',async()=>{
     const create=vi.fn().mockResolvedValue(undefined);
     render(<ProfessionalProfileManager profiles={[]} onCreate={create} onUpdate={vi.fn()} onDelete={vi.fn()}/>);
     openManager();
-    const submit=screen.getByRole('button',{name:'Añadir perfil'});
+    const submit=screen.getByRole('button',{name:'Ajouter un profil'});
     expect(submit).toHaveProperty('disabled',true);
-    fireEvent.change(screen.getByLabelText(/Nombre en árabe/),{target:{value:'عدل جديد'}});
-    fireEvent.change(screen.getByLabelText('Nombre en francés'),{target:{value:'Nouvel adoul'}});
+    fireEvent.change(screen.getByLabelText(/Nom en arabe/),{target:{value:'عدل جديد'}});
+    fireEvent.change(screen.getByLabelText('Nom en français'),{target:{value:'Nouvel adoul'}});
     fireEvent.click(submit);
     await waitFor(()=>expect(create).toHaveBeenCalledWith({
       display_name_ar:'عدل جديد',display_name_fr:'Nouvel adoul',function_fr:'',
@@ -33,9 +33,9 @@ describe('professional profile manager',()=>{
     const update=vi.fn().mockResolvedValue(undefined);
     render(<ProfessionalProfileManager profiles={[profile]} onCreate={vi.fn()} onUpdate={update} onDelete={vi.fn()}/>);
     openManager();
-    fireEvent.click(screen.getByRole('button',{name:'Editar'}));
-    fireEvent.change(screen.getByLabelText('Nombre en francés'),{target:{value:'Nom corrigé'}});
-    fireEvent.click(screen.getByRole('button',{name:'Guardar cambios'}));
+    fireEvent.click(screen.getByRole('button',{name:'Modifier'}));
+    fireEvent.change(screen.getByLabelText('Nom en français'),{target:{value:'Nom corrigé'}});
+    fireEvent.click(screen.getByRole('button',{name:'Enregistrer les modifications'}));
     await waitFor(()=>expect(update).toHaveBeenCalledWith({...profile,display_name_fr:'Nom corrigé'}));
   });
 
@@ -43,9 +43,9 @@ describe('professional profile manager',()=>{
     const used={...profile,in_use:true,usage_count:2};
     render(<ProfessionalProfileManager profiles={[used]} onCreate={vi.fn()} onUpdate={vi.fn()} onDelete={vi.fn()}/>);
     openManager();
-    expect(screen.getByText(/utilizado por 2 expedientes conservados/)).toBeTruthy();
-    expect(screen.getByRole('button',{name:'Desactivar'})).toHaveProperty('disabled',true);
-    expect(screen.getByRole('button',{name:/Eliminar/})).toHaveProperty('disabled',true);
+    expect(screen.getByText(/utilisé par 2 dossiers conservés/)).toBeTruthy();
+    expect(screen.getByRole('button',{name:'Désactiver'})).toHaveProperty('disabled',true);
+    expect(screen.getByRole('button',{name:/Supprimer/})).toHaveProperty('disabled',true);
   });
 
   it('only enables permanent deletion for an unused inactive profile',async()=>{
@@ -53,7 +53,7 @@ describe('professional profile manager',()=>{
     const inactive={...profile,active:false};
     render(<ProfessionalProfileManager profiles={[inactive]} onCreate={vi.fn()} onUpdate={vi.fn()} onDelete={remove}/>);
     openManager();
-    const button=screen.getByRole('button',{name:/Eliminar/});
+    const button=screen.getByRole('button',{name:/Supprimer/});
     expect(button).toHaveProperty('disabled',false);
     fireEvent.click(button);
     await waitFor(()=>expect(remove).toHaveBeenCalledWith(inactive));

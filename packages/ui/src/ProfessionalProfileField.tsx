@@ -1,5 +1,6 @@
 import {useEffect, useState, type FocusEvent} from 'react';
 import type {ProfessionalProfile} from '@notario/api-client';
+import {useUiLocale} from './locale';
 
 interface Props {
   profiles: ProfessionalProfile[];
@@ -16,6 +17,9 @@ const DIRECT = '__direct__';
 
 export function ProfessionalProfileField({profiles, value, onChange, disabled, title,
   onFocus, onBlur, maximumCharacters = 160}: Props) {
+  const {locale}=useUiLocale();
+  const text=locale==='ar'?{source:'مصدر الملف المهني',select:'اختر ملفاً متكرراً',inactive:'غير نشط — استبدله',direct:'الكتابة مباشرة',name:'الاسم المهني لهذه الوثيقة',placeholder:'اكتب الاسم كما يجب أن يظهر بالعربية'}:
+    {source:'Origine du profil professionnel',select:'Sélectionner un profil fréquent',inactive:'inactif — à remplacer',direct:'Saisir directement',name:'Nom professionnel pour ce document',placeholder:'Saisissez le nom tel qu’il doit apparaître en arabe'};
   const known = profiles.some(profile => profile.id === value);
   const [direct, setDirect] = useState(Boolean(value) && !known);
   useEffect(() => {if (value && known) setDirect(false)}, [known, value]);
@@ -25,21 +29,21 @@ export function ProfessionalProfileField({profiles, value, onChange, disabled, t
   return <fieldset className="professional-profile-field" disabled={disabled} title={title}
     onFocusCapture={event => {if (crossesBoundary(event)) onFocus?.()}}
     onBlurCapture={event => {if (crossesBoundary(event)) onBlur?.()}}>
-    <select aria-label="Origen del perfil profesional" value={direct ? DIRECT : value}
+    <select aria-label={text.source} value={direct ? DIRECT : value}
       onChange={event => {
         if (event.target.value === DIRECT) {setDirect(true); onChange('')}
         else {setDirect(false); onChange(event.target.value)}
       }}>
-      <option value="">Selecciona un perfil frecuente</option>
+      <option value="">{text.select}</option>
       {profiles.map(profile => <option key={profile.id} value={profile.id}>
         {profile.display_name_fr ? `${profile.display_name_fr} · ${profile.display_name_ar}` : profile.display_name_ar}
-        {profile.active ? '' : ' · inactivo — sustituir'}
+        {profile.active ? '' : ` · ${text.inactive}`}
       </option>)}
-      <option value={DIRECT}>Escribir directamente</option>
+      <option value={DIRECT}>{text.direct}</option>
     </select>
-    {direct && <input aria-label="Nombre profesional para este documento" dir="rtl"
+    {direct && <input aria-label={text.name} dir="rtl"
       autoFocus value={known ? '' : value} maxLength={maximumCharacters}
-      placeholder="Escribe el nombre tal como debe aparecer en árabe"
+      placeholder={text.placeholder}
       onChange={event => onChange(event.target.value)}/>}
   </fieldset>;
 }

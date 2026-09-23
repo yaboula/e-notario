@@ -22,3 +22,18 @@ Acciones asociadas a los códigos:
 - `MODEL_UNAVAILABLE`, `CLASSICAL_DETECTOR_ERROR`: incidencia técnica; no seguir con OCR y notificar al responsable.
 
 `CLASSICAL_DETECTOR_MISSED`, `MODEL_DETECTOR_MISSED`, `DETECTOR_SOFT_DISAGREEMENT` y `STRONG_CLASSICAL_OVERRIDE` son advertencias de fallback, no rechazos. Deben contabilizarse en el benchmark para detectar cambios de dominio. El perfil 0.6.1 tolera variación moderada de luz y borde, pero conserva como controles duros la geometría, presencia completa, resolución, legibilidad y ausencia de bordes negros materiales.
+
+
+## Captura asistida y corrección de bordes — alpha.4
+
+El móvil intenta obtener una fotografía mediante `ImageCapture` y conserva el fotograma completo como fallback. No recorta con el marco de pantalla ni aplica zoom. La disponibilidad, resolución y enfoque dependen del navegador y del dispositivo; «Seleccionar fotografía» sigue disponible. La fotografía completa se muestra antes de enviarla.
+
+Durante la cámara, se envía como máximo una vista cada ciclo de aproximadamente 900 ms más su latencia, con lado máximo de 640 píxeles, al PC autenticado. OpenCV devuelve un contorno y consejos de distancia, margen e iluminación. Una sola inferencia de vista previa se ejecuta simultáneamente por estación; se omite mientras se procesa una captura. Las vistas no se conservan, no crean documentos ni consumen OCR. Son orientación de encuadre, no aceptación, comprobación de nitidez ni captura automática. Si no se detecta un contorno o la red falla, el disparo manual sigue disponible.
+
+«Ajustar bordes» permite arrastrar las cuatro esquinas sobre el original. También está disponible tras un rechazo con imagen decodificada. Los puntos se expresan como fracciones de la imagen ya orientada con EXIF, sin modificar ni recomprimir el original. La estación valida orden, convexidad, presencia dentro de imagen, ocupación, resolución, iluminación y bordes negros. La evidencia automática de contraste del borde se sustituye por la selección del operador; ningún otro gate se omite. Texto tapado, desenfoque o reflejos destructivos necesitan otra foto; el editor no reconstruye contenido ausente.
+
+La salida sigue siendo JPEG 95 de `1600 × 1008`. Tras rectificar se aplica, solo si existe variación amplia de iluminación, una corrección suave acotada a ±12 niveles del canal L de Lab. La nitidez se mide antes de la mejora. El original se conserva bajo la misma protección y retención. No se usa upscale neuronal; el reescalado continúa mediante interpolación bicúbica de la homografía.
+
+La captura manual produce `detector_used: manual` y advertencia `MANUAL_CORNERS`; una selección cruzada, fuera de imagen o inválida produce `INVALID_MANUAL_CORNERS`. El benchmark automático no debe contar las correcciones humanas como detecciones automáticas.
+
+La validación sintética compara el tag alpha.3 con alpha.4 en las mismas escenas: tarjeta redondeada con color, IoU de 0,97417 a 0,99672; su variante oscurecida pasa de rechazo a aceptación; la escena con varios rectángulos conserva el rechazo. No mide tasa de rechazo real ni superioridad respecto a otras apps. Siguen pendientes corpus autorizado, calibración de reflejos/desenfoque y pruebas físicas Android/iOS.

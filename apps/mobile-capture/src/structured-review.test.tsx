@@ -17,25 +17,25 @@ describe('MobileStructuredReview',()=>{
     const workspace={approved_identities:[],document_generation_requests:[],case_drafts:[],documents:[],captures:[],connected_devices:1,processing:false,mobile_url:null,lan_mode:null,retention_minutes:60} satisfies Workspace;
     const api={extraction:vi.fn().mockResolvedValue(approved),templates:vi.fn().mockResolvedValue([]),workspace:vi.fn().mockResolvedValue(workspace)} as unknown as CaptureApi;
     render(<AppTheme><MobileStructuredReview api={api} document={ready} captures={[]} onClose={()=>{}}/></AppTheme>);
-    const partial=await screen.findByRole('button',{name:/Relleno parcial/});
-    expect(screen.getByRole('button',{name:/Relleno completo/}).hasAttribute('disabled')).toBe(false);
+    const partial=await screen.findByRole('button',{name:/Remplissage partiel/});
+    expect(screen.getByRole('button',{name:/Remplissage complet/}).hasAttribute('disabled')).toBe(false);
     fireEvent.click(partial);
-    expect(await screen.findByRole('button',{name:'Volver a datos'})).toBeTruthy();
-    expect(screen.queryByRole('button',{name:/Relleno completo/})).toBeNull();
-    fireEvent.click(screen.getByRole('button',{name:'Volver a datos'}));
-    expect(await screen.findByRole('button',{name:/Relleno parcial/})).toBeTruthy();
+    expect(await screen.findByText('Retour aux données')).toBeTruthy();
+    expect(screen.queryByRole('button',{name:/Remplissage complet/})).toBeNull();
+    fireEvent.click(screen.getByText('Retour aux données'));
+    expect(await screen.findByRole('button',{name:/Remplissage partiel/})).toBeTruthy();
   });
   for(const width of [360,390,430])it(`renders the secure review flow at ${width}px`,async()=>{
     Object.defineProperty(window,'innerWidth',{configurable:true,value:width});
     const api={extraction:vi.fn().mockResolvedValue(extraction)} as unknown as CaptureApi;
     const {container}=render(<AppTheme><MobileStructuredReview api={api} document={document} captures={[]} onClose={()=>{}}/></AppTheme>);
-    await screen.findByLabelText('Número nacional (CIN)');
+    await screen.findByLabelText('Numéro national (CIN)');
     expect(container.querySelectorAll('input,textarea')).toHaveLength(13);
     expect(container.querySelectorAll('select')).toHaveLength(1);
-    expect(screen.getByText('Comprueba los 14 campos')).toBeTruthy();
-    expect(screen.getByRole('button',{name:'Aceptar todo y aprobar'}).hasAttribute('disabled')).toBe(false);
-    expect(screen.queryByText('Exportar JSON')).toBeNull();
-    expect(screen.queryByText('Texto completo')).toBeNull();
+    expect(screen.getByText('Vérifiez les 14 champs')).toBeTruthy();
+    expect(screen.getByRole('button',{name:'Tout accepter et approuver'}).hasAttribute('disabled')).toBe(false);
+    expect(screen.queryByText('Exporter JSON')).toBeNull();
+    expect(screen.queryByText('Texte complet')).toBeNull();
   });
 
   it('reloads a Windows confirmation when the shared revision changes',async()=>{
@@ -43,11 +43,11 @@ describe('MobileStructuredReview',()=>{
     const api={extraction:vi.fn().mockResolvedValueOnce(extraction).mockResolvedValue(confirmed)} as unknown as CaptureApi;
     const view=(item:DocumentSummary)=><AppTheme><MobileStructuredReview api={api} document={item} captures={[]} onClose={()=>{}}/></AppTheme>;
     const rendered=render(view(document));
-    await screen.findByLabelText('Número nacional (CIN)');
+    await screen.findByLabelText('Numéro national (CIN)');
     const changed={...document,extraction_summary:{...document.extraction_summary,revision:2,reviewed_count:1}};
     rendered.rerender(view(changed));
     await waitFor(()=>expect(api.extraction).toHaveBeenCalledTimes(2));
-    await waitFor(()=>expect(screen.getAllByText('Confirmado').length).toBeGreaterThan(0));
+    await waitFor(()=>expect(screen.getAllByText('Confirmé').length).toBeGreaterThan(0));
   });
 });
 
@@ -59,9 +59,9 @@ describe('MobileFullCasePreparation',()=>{
     const createCase=vi.fn().mockResolvedValue(created);
     const api={templates:vi.fn().mockResolvedValue([template]),workspace:vi.fn().mockResolvedValue(workspace),professionalProfiles:vi.fn().mockResolvedValue([]),createCase,case:vi.fn().mockResolvedValue(created),caseFieldLeases:vi.fn().mockResolvedValue([]),subscribe:vi.fn().mockReturnValue(()=>{})} as unknown as CaptureApi;
     render(<AppTheme><MobileFullCasePreparation api={api} open onClose={()=>{}}/></AppTheme>);
-    await screen.findByRole('option',{name:/Acta de matrimonio/});
-    expect(screen.getByText(/archivo Word se generará únicamente en Windows/i)).toBeTruthy();
-    fireEvent.click(screen.getByRole('button',{name:'Crear expediente'}));
+    await screen.findByRole('option',{name:/Acte de mariage/});
+    expect(screen.getByText(/fichier Word sera généré uniquement dans Windows/i)).toBeTruthy();
+    fireEvent.click(screen.getByRole('button',{name:'Créer le dossier'}));
     await waitFor(()=>expect(createCase).toHaveBeenCalledWith('ma.marriage','1.6.0','complete',expect.any(String)));
     expect(await screen.findByLabelText(/Date d’enregistrement/)).toBeTruthy();
   });
@@ -74,24 +74,24 @@ describe('MobileDocumentPreparation',()=>{
     const onClose=vi.fn();
     const api={templates:vi.fn().mockResolvedValue([]),workspace:vi.fn().mockResolvedValue(workspace)} as unknown as CaptureApi;
     render(<AppTheme><MobileDocumentPreparation api={api} documentId={document.id} open onClose={onClose}/></AppTheme>);
-    const release=await screen.findByRole('button',{name:'Imágenes liberadas'});
+    const release=await screen.findByRole('button',{name:'Images libérées'});
     expect(release.hasAttribute('disabled')).toBe(true);
-    fireEvent.click(screen.getByRole('button',{name:'Volver a captura'}));
+    fireEvent.click(screen.getByRole('button',{name:'Retour à la capture'}));
     expect(onClose).toHaveBeenCalledWith(true);
   });
   it('uses only identities returned by the owner workspace and sends a request to Windows',async()=>{
-    const template:TemplateSummary={schema_version:'enotario.document-template/v1',id:'ma.inheritance',version:'1.1.0',slug:'herencia',title_es:'Acta de herencia',title_ar:'إراثة',description_es:'Piloto',language:'ar-MA',roles:[{key:'applicant',label_es:'Solicitante',label_ar:'طالب الشهادة',minimum:0,maximum:1,repeatable:false},{key:'heir',label_es:'Heredero',label_ar:'الوارث',minimum:1,maximum:12,repeatable:true},{key:'witness',label_es:'Testigo',label_ar:'الشاهد',minimum:0,maximum:12,repeatable:true}]};
+    const template:TemplateSummary={schema_version:'enotario.document-template/v1',id:'ma.inheritance',version:'1.1.0',slug:'herencia',title_es:'Acta de herencia',title_fr:'Acte d’hérédité',title_ar:'إراثة',description_es:'Piloto',description_fr:'Pilote',language:'ar-MA',roles:[{key:'applicant',label_es:'Solicitante',label_fr:'Demandeur',label_ar:'طالب الشهادة',minimum:0,maximum:1,repeatable:false},{key:'heir',label_es:'Heredero',label_fr:'Héritier',label_ar:'الوارث',minimum:1,maximum:12,repeatable:true},{key:'witness',label_es:'Testigo',label_fr:'Témoin',label_ar:'الشاهد',minimum:0,maximum:12,repeatable:true}]};
     const identity:ApprovedIdentitySummary={id:'33333333-3333-3333-3333-333333333333',document_id:document.id,revision:1,source:'mobile',created_at:new Date().toISOString(),expires_at:new Date(Date.now()+60000).toISOString(),images_released:false,display_name_ar:'شخص تجريبي',display_name_latin:'TEST PERSON',national_id:'AA123456'};
     const workspace={approved_identities:[identity],document_generation_requests:[],case_drafts:[],documents:[],captures:[],connected_devices:1,processing:false,mobile_url:null,lan_mode:null,retention_minutes:60} satisfies Workspace;
     const createDocumentRequest=vi.fn().mockResolvedValue({});
     const api={templates:vi.fn().mockResolvedValue([template]),workspace:vi.fn().mockResolvedValue(workspace),createDocumentRequest} as unknown as CaptureApi;
     render(<AppTheme><MobileDocumentPreparation api={api} documentId={document.id} open onClose={()=>{}}/></AppTheme>);
-    const heirs=await screen.findByRole('group',{name:'Heredero'});
+    const heirs=await screen.findByRole('group',{name:'Héritier'});
     expect(screen.queryByRole('listbox')).toBeNull();
     expect(within(heirs).getAllByRole('checkbox')).toHaveLength(1);
     fireEvent.click(within(heirs).getByRole('checkbox',{name:'TEST PERSON · AA123456'}));
-    fireEvent.click(screen.getByRole('button',{name:'Enviar solicitud a Windows'}));
+    fireEvent.click(screen.getByRole('button',{name:'Envoyer la demande à Windows'}));
     await waitFor(()=>expect(createDocumentRequest).toHaveBeenCalledWith('ma.inheritance','1.1.0',{applicant:[],heir:[identity.id],witness:[]},expect.any(String)));
-    expect(screen.queryByText(/identidad ajena/i)).toBeNull();
+    expect(screen.queryByText(/identité étrangère/i)).toBeNull();
   });
 });

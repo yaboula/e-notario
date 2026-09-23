@@ -24,8 +24,8 @@ function Fixture({initial=[]}:{initial?:string[]}) {
 describe('identity-linked repeatable legal field',()=>{
   it('does not render orphan inputs before people are assigned',()=>{
     render(<RepeatableLegalField field={field} identities={identities} identityIds={[]} value={[]} onChange={()=>{}}/>);
-    expect(screen.getByRole('group',{name:'Relación con el causante'})).toBeTruthy();
-    expect(screen.getByText('Asigna primero las personas para completar este campo.')).toBeTruthy();
+    expect(screen.getByRole('group',{name:'Lien avec le défunt'})).toBeTruthy();
+    expect(screen.getByText('Attribuez d’abord les personnes pour compléter ce champ.')).toBeTruthy();
     expect(screen.queryByRole('textbox')).toBeNull();
   });
 
@@ -34,15 +34,15 @@ describe('identity-linked repeatable legal field',()=>{
     const second=screen.getByRole('textbox',{name:'Lien successoral 2: PERSON B · TESTB'});
     fireEvent.change(second,{target:{value:'بنت'}});
     expect(screen.getByTestId('values').textContent).toBe('["","بنت"]');
-    expect(screen.getByText('Heredero 1 · PERSON A · TESTA')).toBeTruthy();
-    expect(screen.getByText('Heredero 2 · PERSON B · TESTB')).toBeTruthy();
+    expect(screen.getByText('Héritier 1 · PERSON A · TESTA')).toBeTruthy();
+    expect(screen.getByText('Héritier 2 · PERSON B · TESTB')).toBeTruthy();
   });
 
   it('does not expose a missing identity identifier and keeps the slot editable',()=>{
     render(<RepeatableLegalField field={field} identities={[]} identityIds={['private-identity-reference']}
       value={['ابن']} onChange={()=>{}}/>);
     expect(screen.queryByText('private-identity-reference')).toBeNull();
-    expect(screen.getByRole('textbox',{name:'Lien successoral 1: Identidad no disponible'})).toHaveProperty('value','ابن');
+    expect(screen.getByRole('textbox',{name:'Lien successoral 1: Identité indisponible'})).toHaveProperty('value','ابن');
   });
 
   it('keeps one collaboration lease while focus moves between people',()=>{
@@ -60,7 +60,7 @@ describe('identity-linked repeatable legal field',()=>{
   it('disables the entire group when another device owns its lease',()=>{
     render(<RepeatableLegalField field={field} identities={identities} identityIds={['person-a']}
       value={['']} onChange={()=>{}} disabled title="Modification en cours : Mobile"/>);
-    const group=screen.getByRole('group',{name:'Relación con el causante'}) as HTMLFieldSetElement;
+    const group=screen.getByRole('group',{name:'Lien avec le défunt'}) as HTMLFieldSetElement;
     expect(group.disabled).toBe(true);
     expect(screen.getByRole('textbox').matches(':disabled')).toBe(true);
   });

@@ -16,6 +16,7 @@ class RectificationStatus(str, Enum):
 
 
 class DetectorKind(str, Enum):
+    MANUAL = "manual"
     HYBRID = "hybrid"
     DOCQUAD = "docquadnet"
     OPENCV = "opencv"

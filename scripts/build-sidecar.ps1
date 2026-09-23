@@ -2,6 +2,19 @@ $ErrorActionPreference = 'Stop'
 $workspaceDirectory = Split-Path -Parent $PSScriptRoot
 Push-Location $workspaceDirectory
 try {
+    $releaseVersion = (Get-Content -LiteralPath 'package.json' -Raw | ConvertFrom-Json).version
+    foreach ($packagePath in @('apps/desktop/package.json', 'apps/mobile-capture/package.json')) {
+        $packageVersion = (Get-Content -LiteralPath $packagePath -Raw | ConvertFrom-Json).version
+        if ($packageVersion -cne $releaseVersion) {
+            throw "Version mismatch: $packagePath is $packageVersion but the release is $releaseVersion."
+        }
+    }
+    foreach ($distPath in @('apps/desktop/dist/assets', 'apps/mobile-capture/dist/assets')) {
+        $bundles = @(Get-ChildItem -LiteralPath $distPath -Filter '*.js' -File -ErrorAction SilentlyContinue)
+        if ($bundles.Count -eq 0 -or -not ($bundles | Select-String -SimpleMatch $releaseVersion -Quiet)) {
+            throw "Stale build assets: $distPath does not contain release version $releaseVersion. Run pnpm build first."
+        }
+    }
     $assetMappings = @(
         @{Source='apps/desktop/dist'; Target='apps/desktop/dist'},
         @{Source='apps/mobile-capture/dist'; Target='apps/mobile-capture/dist'},

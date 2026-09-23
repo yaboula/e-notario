@@ -288,8 +288,8 @@ begin
       and not e.suspended and e.ends_at + interval '24 hours' > now();
   if not found then raise exception 'CONTROL_ENTITLEMENT_INACTIVE'; end if;
   insert into public.control_audit_events (organization_id, actor_user_id, action, target_id)
-    select organization_id, p_actor, 'lease_issued', p_station_id
-    from public.control_stations where id = p_station_id;
+    select station.organization_id, p_actor, 'lease_issued', p_station_id
+    from public.control_stations as station where station.id = p_station_id;
 end;
 $$;
 

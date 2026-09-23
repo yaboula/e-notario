@@ -74,9 +74,9 @@ Fecha base: 2026-09-20. Actualizado: 2026-09-23. Piloto previsto: hasta cinco de
 ## Pendiente antes del piloto real
 
 1. Completar la revisión visual con fotografías CNIE autorizadas que recorran captura, OCR y revisión estructurada; validar la terminología final con usuarios francófonos y arabófonos antes de entregar. El expediente completo, los perfiles profesionales y su edición desde Windows y móvil ya se revisaron con datos representativos a 1366×768 y 360×780.
-2. Configurar SMTP, políticas Auth y el primer administrador de plataforma; después ejecutar las pruebas de autorización e aislamiento con cuentas de ensayo.
-3. Compilar Windows `-Control` con `kid=valiris-lease-2026-09-a` y su clave pública, y completar los gates externos definidos en `PHASE2_PILOT_RUNBOOK.md` antes de autorizar el primer despacho.
+2. La infraestructura real, SMTP, políticas Auth, administrador de plataforma con TOTP, primer despacho, titular y operador ya están activos. Falta completar la prueba de aislamiento con un segundo despacho de ensayo y registrar la pasada de aceptación.
+3. El instalador Windows interno de control se compiló desde `001bd29` con `kid=valiris-lease-2026-09-a`, la clave pública Ed25519 y el origen Supabase exacto. El artefacto sin firma comercial está en `output/valiris-desk-pilot/`, acompañado de un manifiesto SHA-256; queda limitado a instalación controlada mientras se completan los gates externos.
 4. Hacer una validación corta en infraestructura real: aislamiento entre dos despachos, MFA, revocación de estación, renovación, siete días sin conexión y cierre de 24 horas.
 5. Firmar y distribuir el instalador de control del piloto. El procedimiento de soporte, copia de configuración y rotación de claves ya está preparado en `PHASE2_SUPPORT_PLAYBOOK.md` y debe validarse con los responsables reales.
 
-El piloto todavía no debe entregarse a clientes: faltan infraestructura real, firma/distribución y revisión visual/lingüística de la interfaz FR/AR. El núcleo de autorización y aislamiento ya está integrado y probado localmente.
+El entorno real ya está operativo, pero el piloto todavía no debe distribuirse de forma general: faltan firma comercial, aislamiento real entre dos despachos, pruebas físicas de estación/desconexión y revisión lingüística final con usuarios FR/AR. El núcleo de autorización y el primer flujo de cuentas están activos.

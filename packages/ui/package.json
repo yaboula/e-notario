@@ -1,5 +1,5 @@
 {
-  "name": "@notario/ui", "version": "0.8.0-alpha.5", "private": true, "type": "module",
+  "name": "@notario/ui", "version": "0.8.0-alpha.6", "private": true, "type": "module",
   "exports": {".": "./src/index.tsx", "./styles.css": "./src/styles.css"},
   "dependencies": {
     "@notario/api-client": "workspace:*",

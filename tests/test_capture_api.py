@@ -32,7 +32,7 @@ def upload(client, payload=b"invalid-png", token=TOKEN, key=None):
 
 def test_workspace_and_images_require_authentication(client):
     assert client.get("/api/health").json() == {
-        "status": "ok", "version": "0.8.0-alpha.4", "api_version": 2,
+        "status": "ok", "version": "0.8.0-alpha.5", "api_version": 2,
         "background": {"ocr_worker": "running", "maintenance": "running", "storage_error": None},
     }
     assert client.get("/api/workspace").status_code == 401
